@@ -1,7 +1,6 @@
 # WSISA
 
 ## 代码结构
-```bash
 
 ```bash
 WSISA/
@@ -46,8 +45,9 @@ WSISA/
 └── README.md                      # 本文件
 ```
 
-## 得到patches
+## 得到 patches
 从 WSI 中提取图像块（patches），并保存到指定目录。
+
 ```bash
 python extract_patches.py
 ```
@@ -65,7 +65,11 @@ slide_basename = os.path.splitext(slide_name)[0]
 save_dir = os.path.join("data", "patches", slide_basename)
 ```
 
-## 聚类
+时间较长，需要耐心等待。
+
+![](media/2025-05-24-22-43-03.png)
+
+## PCA降维 + 聚类
 对所有提取好的 patches 进行 PCA 降维并 K-Means 聚类。
 ```bash
 python pca_cluster_img.py
