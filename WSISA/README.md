@@ -46,15 +46,23 @@ WSISA/
 └── README.md                      # 本文件
 ```
 
-## 需要数据
+## 得到patches
+从 WSI 中提取图像块（patches），并保存到指定目录。
 ```bash
-data/patches/
-├── WSI_001/
-│   ├── patch_0001.png
-│   └── patch_0002.png
-└── WSI_002/
-    ├── patch_0001.png
-    └── patch_0002.png
+python extract_patches.py
+```
+
+运行前修改：
+```python
+# WSI 文件名（放在 data/WSI/ 目录下）
+slide_name = "TCGA-BL-A13J-01Z-00-DX2.289B5C8E-56AF-440D-A844-36BD98B573AF.svs"
+
+# 基于仓库根目录的相对路径
+slide_path = os.path.join("data", "WSI", slide_name)
+
+# 输出 patches 存放在 data/patches/<slide_basename>/
+slide_basename = os.path.splitext(slide_name)[0]
+save_dir = os.path.join("data", "patches", slide_basename)
 ```
 
 ## 聚类
