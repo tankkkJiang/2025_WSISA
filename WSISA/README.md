@@ -45,12 +45,15 @@ WSISA/
 └── README.md                      # 本文件
 ```
 
-## 得到 patches
+## 实验步骤
+### 1. 得到 patches
 从 WSI 中提取图像块（patches），并保存到指定目录。
 
 ```bash
 python extract_patches.py
 ```
+
+注意一次只能处理一张WSI，没有实现批量处理。
 
 运行前修改：
 ```python
@@ -69,27 +72,39 @@ save_dir = os.path.join("data", "patches", slide_basename)
 
 ![](media/2025-05-24-22-43-03.png)
 
-## PCA降维 + 聚类
+### 2. PCA降维 + 聚类
 对所有提取好的 patches 进行 PCA 降维并 K-Means 聚类。
 ```bash
 python pca_cluster_img.py
 ```
 
-遍历 data/patches 下所有子文件夹（每个子文件夹对应一个 WSI）；将所有子文件夹里 .jpg 补丁文件一次性收集到一个列表里；对这个列表中的所有补丁一并做 PCA 降维和 K-Means 聚类；最终输出一个全局的聚类结果 CSV。
+如有需要，根据需求安装下述环境：
+```bash
+# 安装 CPU 版本
+conda install -c conda-forge faiss-cpu
+
+# 如果你想用 GPU 版本（需要 CUDA），可以改成：
+conda install -c conda-forge faiss-gpu
+
+pip install faiss-cpu
+```
+
+1. 遍历 data/patches 下所有子文件夹（每个子文件夹对应一个 WSI），将所有子文件夹里 .png 补丁文件一次性收集到一个列表里；
+2. 对这个列表中的所有补丁一并做 PCA 降维和 K-Means 聚类； 
+3. 最终输出一个全局的聚类结果 CSV。
 
 
 
-## 簇选择 (Select Clusters)
+### 3. 簇选择 (Select Clusters)
 使用 DeepConvSurv 在每个簇内独立训练生存模型，并根据验证集表现选择最佳簇。
 
-## 集成与模型训练 (Integration & Training)
+### 集成与模型训练 (Integration & Training)
 将选中的簇整合，提取对应 patch 的特征并进行最终生存模型训练。
 
-## 生存预测 (Survival Prediction)
+### 生存预测 (Survival Prediction)
 
 
-
-## 原始README
+## 原始仓库README
 Implementation of WSISA CVPR 2017
 Implemented 4 step:
 1. Clustering
