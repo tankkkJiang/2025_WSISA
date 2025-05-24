@@ -29,27 +29,23 @@ def get_file_list(fPath,
                   str_include='',
                   str_exclude=' ',
                   exclude_dirs=None):
-    """Get the file list in the path `fPath` according to the given file type `fType`
-    """
+    """根据文件类型 fType 获取 fPath 路径下的所有文件列表"""
     if not isinstance(fType, str):
         print('File type should be string!')
         return
     else:
-        all_imgs = []
-        if exclude_dirs != None:
+        if exclude_dirs is not None:
+            all_imgs = []
             for root, _, fl in tqdm(list(os.walk(fPath)),
                                     dynamic_ncols=True,
                                     ascii=False,
-                                    desc='Indexing data dir:{}'.format(fPath)):
+                                    desc=f'Indexing data dir:{fPath}'):
                 for f in fl:
                     if (f.endswith(fType) and str_include in f and
                             str_exclude not in f and
                             f[:60] not in exclude_dirs):
                         all_imgs.append(os.path.join(root, f))
-                        # import pdb
-                        # pdb.set_trace()
             return all_imgs
-
         else:
             return [
                 os.path.join(root, f)
@@ -61,23 +57,17 @@ def get_file_list(fPath,
 
 
 def preprocess_features(npdata, pca=256):
-    """Preprocess an array of features.
-    Args:
-        npdata (np.array N * ndim): features to preprocess
-        pca (int): dim of output
-    Returns:
-        np.array of dim N * pca: data PCA-reduced, whitened and L2-normalized
-    """
+    """PCA 白化并 L2 归一化特征"""
     _, ndim = npdata.shape
     npdata = npdata.astype('float32')
 
-    # Apply PCA-whitening with Faiss
+    # Faiss PCA + white
     mat = faiss.PCAMatrix(ndim, pca, eigen_power=-0.5)
     mat.train(npdata)
     assert mat.is_trained
     npdata = mat.apply_py(npdata)
 
-    # L2 normalization
+    # L2 归一化
     row_sums = np.linalg.norm(npdata, axis=1)
     npdata = npdata / row_sums[:, np.newaxis]
 
@@ -85,24 +75,12 @@ def preprocess_features(npdata, pca=256):
 
 
 def run_kmeans(x, nmb_clusters, verbose=False):
-    """Runs kmeans on 1 GPU.
-    Args:
-        x: data
-        nmb_clusters (int): number of clusters
-    Returns:
-        list: ids of data in each cluster
-    """
+    """在单 GPU 上运行 KMeans 聚类"""
     n_data, d = x.shape
 
-    # faiss implementation of k-means
     clus = faiss.Clustering(d, nmb_clusters)
-
-    # Change faiss seed at each k-means so that the randomly picked
-    # initialization centroids do not correspond to the same feature ids
-    # from an epoch to another.
     clus.seed = np.random.randint(42)
-
-    clus.niter = 300  # 训练迭代次数
+    clus.niter = 300
     clus.max_points_per_centroid = 10000000
     res = faiss.StandardGpuResources()
     flat_config = faiss.GpuIndexFlatConfig()
@@ -110,172 +88,107 @@ def run_kmeans(x, nmb_clusters, verbose=False):
     flat_config.device = 0
     index = faiss.GpuIndexFlatL2(res, d, flat_config)
 
-    # perform the training
     clus.train(x, index)
     _, I = index.search(x, 1)
     losses = faiss.vector_to_array(clus.obj)
     if verbose:
-        print('k-means loss evolution: {0}'.format(losses))
+        print(f'k-means loss evolution: {losses}')
 
     return [int(n[0]) for n in I], losses[-1]
 
 
 def get_pca_reducer_incremental(tr_tensor, n_comp=10):
-    # Apply Incremental PCA on the training images
+    """增量 PCA，用于大规模数据降维"""
     bs = 100
     pca = IncrementalPCA(n_components=n_comp, batch_size=bs)
-
     for i in range(0, len(tr_tensor), bs):
         print(f"fitting {i//bs} th batch")
         pca.partial_fit(tr_tensor[i:i+bs, :])
-
     return pca
 
 
 def combine_images_into_tensor(img_fnames, size=512):
-    """
-    Given a list of image filenames, read the images, flatten them
-    and return a tensor such that each row contains one image.
-    Size of individual image: 320*320
-    """
-    # Initialize the tensor
-    # tensor = np.zeros((len(img_fnames), size * size*3))
-    #
-    # for i, fname in enumerate(img_fnames):
-    #     img = cv2.imread(fname, cv2.IMREAD_GRAYSCALE)
-    #     tensor[i] = img.reshape(-1)
-
-    all_feat = [] #image
-    for fn in tqdm(img_fnames):
-        #tmp = np.load(fn, allow_pickle=True).item()[which_feat]
+    """读取图像列表，resize 并展平到向量"""
+    all_feat = []
+    for fn in tqdm(img_fnames, desc='Loading images'):
         tmp = np.asarray(Image.open(fn).resize((50,50))).reshape(-1)
-        #tmp = np.squeeze(tmp)  # (2048,1,1)-> (2048,)
-        # pdb.set_trace()
         all_feat.append(tmp)
-
     return np.array(all_feat)
 
 
 def cluster_images(all_img_fnames, num_clusters, wsi_feat_dir, num_file):
-    # Select images at random for PCA
+    """对单个 WSI 的补丁进行 PCA + KMeans 聚类，并保存结果"""
     random.shuffle(all_img_fnames)
-    tr_img_fnames = all_img_fnames#[:400]
+    tr_img_fnames = all_img_fnames
 
-    # Flatten and combine the images
+    # PCA 降维
     tr_tensor = combine_images_into_tensor(tr_img_fnames)
-
-    # Perform PCA
     print("Learning PCA...")
     n_comp = 50
     pca = get_pca_reducer_incremental(tr_tensor, n_comp)
 
-    # Transform images in batches
-    print("applying PCA transformation")
+    # 批量转换
+    print("Applying PCA transformation")
     points = np.zeros((len(all_img_fnames), n_comp))
     batch_size = 50
     for i in range(0, len(all_img_fnames), batch_size):
-        print(f"Transforming {i//25} th batch")
         batch_fnames = all_img_fnames[i:i+batch_size]
         all_tensor = combine_images_into_tensor(batch_fnames)
         points[i:i+batch_size] = pca.transform(all_tensor)
 
-    print(f"[DEBUG] Number of samples going into KMeans: {len(points)}")
-
-    # Cluster
+    # KMeans 聚类
+    print(f"[DEBUG] Samples for KMeans: {len(points)}")
     kmeans = KMeans(n_clusters=num_clusters, random_state=0).fit(points)
 
-    # Organize image filenames based on the obtained clusters
+    # 保存聚类 CSV 文件，使用相对路径
+    cluster_dir = os.path.join("cluster_result")  # 根目录下的 cluster_result
+    os.makedirs(cluster_dir, exist_ok=True)
+    wsi_name = os.path.basename(wsi_feat_dir.rstrip(os.sep))
+    csv_name = f"{wsi_name}_{num_file}_cls{num_clusters}.csv"
+    csv_path = os.path.join(cluster_dir, csv_name)
+
+    # 将每个补丁的结果写入 CSV
+    with open(csv_path, 'a') as cluster_file:
+        for i, label in enumerate(kmeans.labels_):
+            fn = all_img_fnames[i]
+            parent_dir = os.path.basename(os.path.dirname(fn))
+            line = ",".join([fn, parent_dir, str(label)])
+            cluster_file.write(line + "\n")
+
+    # 返回分簇结果
     cluster_fnames = defaultdict(list)
     for i, label in enumerate(kmeans.labels_):
         cluster_fnames[label].append(all_img_fnames[i])
-
-        fn = all_img_fnames[i]
-        parent_dir = os.path.basename(os.path.dirname(fn))
-        write_item = ",".join([fn, parent_dir, str(label)])
-        cluster_dir = os.path.join("D:/pycharm/WSISA-main/cluster_result")  # 或任何你想保存csv的位置
-        os.makedirs(cluster_dir, exist_ok=True)
-
-        wsi_name = os.path.basename(wsi_feat_dir.rstrip(os.sep))  # 取 patches 目录名
-        csv_name = f"{wsi_name}_{num_file}_cls{num_clusters}.csv"
-        csv_path = os.path.join(cluster_dir, csv_name)
-
-        with open(csv_path, 'a') as cluster_file:
-            cluster_file.write(write_item + '\n')
-
     return cluster_fnames
 
 
-def cluster_wsis(wsi_feat_dir, pca, num_clusters, num_file = 1000, load_all = False):
-    start = time.time()
+def cluster_wsis(wsi_feat_dir, pca, num_clusters, num_file=1000, load_all=False):
+    """遍历所有 WSI 文件夹，收集补丁后聚类"""
     if load_all:
-        all_file = get_file_list(wsi_feat_dir,
-                                 'jpg',
-                                 str_include='',
-                                 str_exclude=' ')
-        print("[DEBUG] data_dir:", data_dir)
-        print("[DEBUG] WSI 文件:", os.listdir(data_dir))
-        print("[DEBUG] 提取到的 patch 数量:", len(all_file))
-
+        all_file = get_file_list(wsi_feat_dir, 'jpg')
+        print(f"[DEBUG] data_dir: {wsi_feat_dir}")
+        print(f"[DEBUG] WSI folders: {os.listdir(wsi_feat_dir)}")
+        print(f"[DEBUG] Total patches: {len(all_file)}")
     else:
         all_file = []
-        all_subfolder = glob.glob(wsi_feat_dir+'/*')
-
-        # all_cancer_dir = os.listdir(wsi_feat_dir)
-        # print('files num ', len(all_cancer_dir))
-        # all_subfolder = []
-        # for each_cancer in all_cancer_dir:
-        #     cancer_dir = os.path.join(wsi_feat_dir, each_cancer)
-        #     print(cancer_dir)
-        #     if not os.path.isdir(cancer_dir):
-        #         continue
-        #     wsi_dirs = glob.glob(cancer_dir+'/*')
-        #     print(len(wsi_dirs))
-        #     all_subfolder.extend(wsi_dirs)
-
+        subdirs = glob.glob(os.path.join(wsi_feat_dir, '*'))
         random.seed(4)
-        # random.shuffle(all_subfolder)
-        #all_subfolder = all_subfolder[50:]
-        print(all_subfolder[:5])
+        for sd in tqdm(subdirs, desc='Indexing subfolders'):
+            sub_files = get_file_list(sd, 'jpg')
+            random.shuffle(sub_files)
+            all_file += sub_files[:num_file]
+        print(f'total files: {len(all_file)}')
 
-        for each_subfolder in tqdm(all_subfolder,desc = 'loading file list'):
-            each_fl = get_file_list(each_subfolder,
-                                     'jpg',
-                                     str_include='',
-                                     str_exclude=' ')
-            random.shuffle(each_fl)
-            all_file += each_fl[:num_file]
-        print('total files: {}'.format(len(all_file)))
-
-    clustered_fnames = cluster_images(all_file, num_clusters, wsi_feat_dir, num_file)
-
-    return clustered_fnames
+    return cluster_images(all_file, num_clusters, wsi_feat_dir, num_file)
 
 
 if __name__ == "__main__":
+    # 使用相对路径：项目根目录下的 data/patches
+    data_dir = os.path.join("data", "patches")
 
-    data_dir = r"D:\pycharm\WSISA-main\WSISA\patches"
-    #data_dir = '/home/cy/ssd_4t/Chest_anhui/anhui_patch_xlz'
-    #data_dir = '/home/cy/ssd_4t/stainGan/cluster'
-    #which_feat = 'global_avgpool'
-
-
-    wsi_dirs = os.listdir(data_dir)
-    print(len(wsi_dirs))
-
-    # all_cancer_dir = os.listdir(data_dir)
-    # for each_cancer in all_cancer_dir:
-    #     cancer_dir = os.path.join(data_dir, each_cancer)
-    #     wsi_dirs = os.listdir(cancer_dir)
-    #
-    #     pca = PCA(n_components=512)
-    #     for case_name in tqdm(wsi_dirs):
-    #         wsi_abs_path = os.path.join(cancer_dir, case_name)
-    #         cluster_wsi(wsi_abs_path, which_feat, pca)
-
-
-    # cluster all patches
+    # PCA 组件数（保持原有逻辑）
     pca = PCA(n_components=512)
     num_clusters = 10
-    cluster_wsis(data_dir, pca, num_clusters, load_all = True)
 
-    
+    # load_all=True 表示加载所有 patch 进行聚类
+    cluster_wsis(data_dir, pca, num_clusters, load_all=True)

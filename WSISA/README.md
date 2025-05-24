@@ -75,12 +75,9 @@ save_dir = os.path.join("data", "patches", slide_basename)
 python pca_cluster_img.py
 ```
 
-运行前修改：
-```python
-# 在 pca_cluster_img.py 中
-data_dir = 'path/to/patches'  # 所有 WSI 的 patches 根目录
-n_clusters = 10              # 聚类簇数，可调整
-```
+遍历 data/patches 下所有子文件夹（每个子文件夹对应一个 WSI）；将所有子文件夹里 .jpg 补丁文件一次性收集到一个列表里；对这个列表中的所有补丁一并做 PCA 降维和 K-Means 聚类；最终输出一个全局的聚类结果 CSV。
+
+
 
 ## 簇选择 (Select Clusters)
 使用 DeepConvSurv 在每个簇内独立训练生存模型，并根据验证集表现选择最佳簇。
