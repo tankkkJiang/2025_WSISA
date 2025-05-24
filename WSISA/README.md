@@ -12,6 +12,37 @@ WSISA/
 ├── networks.py                    # 定义网络结构（DeepConvSurv/PyTorch 版本）
 ├── main_WSISA_selectedCluster.py  # 第三步：集成已选簇进行特征提取与生存模型训练
 ├── test.py                        # 简单测试脚本
+├── data/
+│   ├── WSI/                      # 原始 WSI 图像文件
+│   │   ├── WSI_001.svs
+│   │   ├── WSI_002.svs
+│   │   └── ...
+│   ├── patches/                  # 提取的图像块
+│   │   ├── WSI_001/
+│   │   │   ├── patch_0001.png
+│   │   │   └── patch_0002.png
+│   │   └── WSI_002/
+│   │       ├── patch_0001.png
+│   │       └── patch_0002.png
+│   └── patients.csv              # 病人相关标签信息
+├── cluster_result/               # 聚类结果
+│   ├── patches_1000_cls10.csv     # 聚类结果文件
+│   └── patches_1000_cls10/        # 聚类结果文件夹
+│       ├── WSI_001/
+│       │   ├── patch_0001.png
+│       │   └── patch_0002.png
+│       └── WSI_002/
+│           ├── patch_0001.png
+│           └── patch_0002.png
+├── log/                          # 日志文件
+│   ├── log.txt                   # 训练日志
+│   └── log_selected.txt          # 选簇日志
+├── model/                        # 训练好的模型
+│   ├── cluster_0.pth             # 第 0 簇模型
+│   ├── cluster_1.pth             # 第 1 簇模型
+│   ├── cluster_2.pth             # 第 2 簇模型
+│   └── ...
+│       └── cluster_n.pth         # 第 n 簇模型
 └── README.md                      # 本文件
 ```
 
