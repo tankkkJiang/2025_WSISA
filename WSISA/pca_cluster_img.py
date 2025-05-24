@@ -11,7 +11,6 @@ from sklearn.cluster import KMeans
 from PIL import Image
 import cv2
 from sklearn.decomposition import IncrementalPCA
-from sklearn.cluster import KMeans
 import glob
 import re
 from collections import defaultdict
@@ -32,28 +31,18 @@ def get_file_list(fPath,
     """根据文件类型 fType 获取 fPath 路径下的所有文件列表"""
     if not isinstance(fType, str):
         print('File type should be string!')
-        return
-    else:
-        if exclude_dirs is not None:
-            all_imgs = []
-            for root, _, fl in tqdm(list(os.walk(fPath)),
-                                    dynamic_ncols=True,
-                                    ascii=False,
-                                    desc=f'Indexing data dir:{fPath}'):
-                for f in fl:
-                    if (f.endswith(fType) and str_include in f and
-                            str_exclude not in f and
-                            f[:60] not in exclude_dirs):
-                        all_imgs.append(os.path.join(root, f))
-            return all_imgs
-        else:
-            return [
-                os.path.join(root, f)
-                for root, _, fl in list(os.walk(fPath))
-                for f in fl
-                if (f.endswith(fType) and str_include in f and
-                    str_exclude not in f)
-            ]
+        return []
+
+    img_list = []
+    # 使用 tqdm 打印遍历进度
+    for root, _, files in tqdm(list(os.walk(fPath)),
+                               desc=f'遍历目录 {fPath}',
+                               dynamic_ncols=True):
+        for f in files:
+            if f.endswith(fType) and str_include in f and str_exclude not in f:
+                img_list.append(os.path.join(root, f))
+    print(f"[INFO] 找到 {len(img_list)} 个 '*{fType}' 文件")
+    return img_list
 
 
 def preprocess_features(npdata, pca=256):
@@ -63,6 +52,7 @@ def preprocess_features(npdata, pca=256):
 
     # Faiss PCA + white
     mat = faiss.PCAMatrix(ndim, pca, eigen_power=-0.5)
+    print(f"[INFO] 训练 PCA 白化: 输入维度 {ndim} -> 输出维度 {pca}")
     mat.train(npdata)
     assert mat.is_trained
     npdata = mat.apply_py(npdata)
@@ -77,6 +67,7 @@ def preprocess_features(npdata, pca=256):
 def run_kmeans(x, nmb_clusters, verbose=False):
     """在单 GPU 上运行 KMeans 聚类"""
     n_data, d = x.shape
+    print(f"[INFO] KMeans 聚类开始: 样本数 {n_data}, 特征维度 {d}, 簇数 {nmb_clusters}")
 
     clus = faiss.Clustering(d, nmb_clusters)
     clus.seed = np.random.randint(42)
@@ -101,51 +92,58 @@ def get_pca_reducer_incremental(tr_tensor, n_comp=10):
     """增量 PCA，用于大规模数据降维"""
     bs = 100
     pca = IncrementalPCA(n_components=n_comp, batch_size=bs)
+    print(f"[INFO] IncrementalPCA 开始, 组件数 {n_comp}, 批大小 {bs}")
     for i in range(0, len(tr_tensor), bs):
-        print(f"fitting {i//bs} th batch")
+        print(f"[INFO] 训练第 {i//bs} 批: 索引 {i} 到 {min(i+bs, len(tr_tensor))}")
         pca.partial_fit(tr_tensor[i:i+bs, :])
     return pca
 
 
 def combine_images_into_tensor(img_fnames, size=512):
     """读取图像列表，resize 并展平到向量"""
+    print(f"[INFO] 开始读取并展平 {len(img_fnames)} 张图像")
     all_feat = []
-    for fn in tqdm(img_fnames, desc='Loading images'):
+    # 使用 tqdm 打印加载进度
+    for fn in tqdm(img_fnames, desc='读取图像', dynamic_ncols=True):
         tmp = np.asarray(Image.open(fn).resize((50,50))).reshape(-1)
         all_feat.append(tmp)
-    return np.array(all_feat)
+    arr = np.array(all_feat)
+    print(f"[INFO] 图像张量形状: {arr.shape}")
+    return arr
 
 
 def cluster_images(all_img_fnames, num_clusters, wsi_feat_dir, num_file):
     """对单个 WSI 的补丁进行 PCA + KMeans 聚类，并保存结果"""
+    print(f"[INFO] 聚类开始: WSI 路径 {wsi_feat_dir}, 使用补丁数 {len(all_img_fnames)}")
     random.shuffle(all_img_fnames)
-    tr_img_fnames = all_img_fnames
 
     # PCA 降维
-    tr_tensor = combine_images_into_tensor(tr_img_fnames)
-    print("Learning PCA...")
+    tr_tensor = combine_images_into_tensor(all_img_fnames)
+    print("[INFO] Learning PCA...")
     n_comp = 50
     pca = get_pca_reducer_incremental(tr_tensor, n_comp)
 
     # 批量转换
-    print("Applying PCA transformation")
+    print("[INFO] Applying PCA transformation")
     points = np.zeros((len(all_img_fnames), n_comp))
     batch_size = 50
-    for i in range(0, len(all_img_fnames), batch_size):
+    for i in tqdm(range(0, len(all_img_fnames), batch_size),
+                  desc='PCA 批量转换', dynamic_ncols=True):
         batch_fnames = all_img_fnames[i:i+batch_size]
         all_tensor = combine_images_into_tensor(batch_fnames)
         points[i:i+batch_size] = pca.transform(all_tensor)
 
     # KMeans 聚类
-    print(f"[DEBUG] Samples for KMeans: {len(points)}")
+    print(f"[INFO] 开始 KMeans: 样本数 {len(points)}, 簇数 {num_clusters}")
     kmeans = KMeans(n_clusters=num_clusters, random_state=0).fit(points)
 
     # 保存聚类 CSV 文件，使用相对路径
-    cluster_dir = os.path.join("cluster_result")  # 根目录下的 cluster_result
+    cluster_dir = os.path.join("cluster_result")
     os.makedirs(cluster_dir, exist_ok=True)
     wsi_name = os.path.basename(wsi_feat_dir.rstrip(os.sep))
     csv_name = f"{wsi_name}_{num_file}_cls{num_clusters}.csv"
     csv_path = os.path.join(cluster_dir, csv_name)
+    print(f"[INFO] 保存聚类结果到 {csv_path}")
 
     # 将每个补丁的结果写入 CSV
     with open(csv_path, 'a') as cluster_file:
@@ -155,29 +153,30 @@ def cluster_images(all_img_fnames, num_clusters, wsi_feat_dir, num_file):
             line = ",".join([fn, parent_dir, str(label)])
             cluster_file.write(line + "\n")
 
-    # 返回分簇结果
-    cluster_fnames = defaultdict(list)
-    for i, label in enumerate(kmeans.labels_):
-        cluster_fnames[label].append(all_img_fnames[i])
-    return cluster_fnames
+    print(f"[INFO] 完成聚类: 共写入 {len(kmeans.labels_)} 条记录")
+    return defaultdict(list, {l: [all_img_fnames[i] for i, lab in enumerate(kmeans.labels_) if lab == l] for l in set(kmeans.labels_)})
 
 
 def cluster_wsis(wsi_feat_dir, pca, num_clusters, num_file=1000, load_all=False):
     """遍历所有 WSI 文件夹，收集补丁后聚类"""
     if load_all:
+        # 加载所有补丁
         all_file = get_file_list(wsi_feat_dir, 'jpg')
-        print(f"[DEBUG] data_dir: {wsi_feat_dir}")
-        print(f"[DEBUG] WSI folders: {os.listdir(wsi_feat_dir)}")
-        print(f"[DEBUG] Total patches: {len(all_file)}")
+        print(f"[INFO] data_dir: {wsi_feat_dir}")
+        print(f"[INFO] WSI 子文件夹: {len(os.listdir(wsi_feat_dir))} 个")
+        print(f"[INFO] Total patches: {len(all_file)}")
     else:
         all_file = []
         subdirs = glob.glob(os.path.join(wsi_feat_dir, '*'))
+        print(f"[INFO] 发现 {len(subdirs)} 个子文件夹，每个采样最多 {num_file} 张图像")
         random.seed(4)
-        for sd in tqdm(subdirs, desc='Indexing subfolders'):
+        for sd in tqdm(subdirs, desc='索引子文件夹', dynamic_ncols=True):
             sub_files = get_file_list(sd, 'jpg')
             random.shuffle(sub_files)
-            all_file += sub_files[:num_file]
-        print(f'total files: {len(all_file)}')
+            sampled = sub_files[:num_file]
+            print(f"[INFO] 子文件夹 {sd} 采样 {len(sampled)} 张")
+            all_file += sampled
+        print(f"[INFO] 抽样后总补丁数: {len(all_file)}")
 
     return cluster_images(all_file, num_clusters, wsi_feat_dir, num_file)
 
