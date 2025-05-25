@@ -153,7 +153,7 @@ data/patches/TCGA-BL-A3JM-01Z-…/patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1…, TC
 
 只跑一次，评估更稳定（因为测试集固定），也可留更多数据训练最终模型。
 
-
+这份代码完成了以下功能：簇/患者级的 train/val/test 划分 + CNN+CoxPH 的训练 + C-index 验证/测试。
 
 ### 生存预测 (Survival Prediction)
 
