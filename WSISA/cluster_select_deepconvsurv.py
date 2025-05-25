@@ -6,6 +6,8 @@
 # 3. 调用 DeepConvSurv 训练各 fold
 # ------------------------------------------------------------
 import os
+os.environ['THEANO_FLAGS'] = "blas.ldflags=,device=cpu"
+
 import numpy as np
 # 必须在导入任何依赖 np.bool / np.int 的库前执行
 if not hasattr(np, 'bool'):
