@@ -7,6 +7,13 @@ from __future__ import print_function
 import time
 import os
 import numpy as np
+if not hasattr(np, 'bool'):
+    np.bool = bool
+if not hasattr(np, 'int'):
+    np.int = int
+if not hasattr(np, 'object'):
+    np.object = object
+
 import theano
 
 theano.config.floatX = 'float32'
