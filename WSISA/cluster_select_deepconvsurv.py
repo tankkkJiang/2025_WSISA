@@ -14,6 +14,8 @@ WSISA/
 └── …
 """
 import os
+# 禁用 BLAS header 探测、只用 CPU 后端
+os.environ['AESARA_FLAGS'] = "device=cpu,blas__ldflags=,floatX=float32,linker=vm"
 import numpy as np
 import pandas as pd
 from PIL import Image
