@@ -1,146 +1,129 @@
 #!/usr/bin/env python
-# cluster_select_holdout.py
-"""
-单一 Hold-out 划分脚本，针对 7 个患者：
-  1. 随机（或固定）选 1 个患者做测试
-  2. 剩余 6 个里随机选 1 个做验证
-  3. 剩余 5 个做训练
-  4. 在 patch 级别上映射并训练/验证/测试
-"""
+# cluster_select_cnnsurv.py
 
-import os, random
-import numpy as np, pandas as pd
+
+import os
+import numpy as np
+import pandas as pd
 from PIL import Image
 import torch
 import torchvision.transforms as T
 from torch.utils.data import Dataset, DataLoader
 from cnn_survival import CNNSurv, CoxPHLoss, c_index_torch
 
-# ----------------------------------------------------------
-BASE   = os.path.abspath(os.path.dirname(__file__))
-PATCHES_ROOT      = os.path.join(BASE, "data", "patches")
-PATIENT_LABEL_CSV = os.path.join(BASE, "data", "patients.csv")
-EXP_LABEL_CSV     = os.path.join(
-    BASE, "cluster_result", "patches_1000_cls10_expanded.csv"
-)
-LOG_DIR = os.path.join(BASE, "log", "wsisa_holdout_pt")
-os.makedirs(LOG_DIR, exist_ok=True)
+# ----------------------------------------
+# 全局路径和设备配置
+BASE       = os.path.abspath(os.path.dirname(__file__))
+EXP_CSV    = os.path.join(BASE, "cluster_result", "patches_1000_cls10_expanded.csv")
+PATCHES    = os.path.join(BASE, "data", "patches")
+DEVICE     = "cuda" if torch.cuda.is_available() else "cpu"
 
+# 超参数设置
 EPOCHS, BATCH, LR, SEED = 20, 30, 5e-4, 1
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-random.seed(SEED); np.random.seed(SEED); torch.manual_seed(SEED)
-# ----------------------------------------------------------
+torch.manual_seed(SEED)
+np.random.seed(SEED)
 
+# -------------------- 数据集定义 --------------------
 class PatchDataset(Dataset):
-    def __init__(self, df_idx):
-        self.df = df_idx.reset_index(drop=True)
+    """
+    只保留传入 DataFrame 中的行，用于 Patch 级别的训练/测试
+    """
+    def __init__(self, df):
+        self.df = df.reset_index(drop=True)
+        # 图像预处理：转 Tensor 并归一化到 [-1,1]
         self.tr = T.Compose([
             T.ToTensor(),
-            T.Normalize(mean=[0.5]*3, std=[0.5]*3)
+            T.Normalize([0.5]*3, [0.5]*3)
         ])
 
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self, idx):
+        # 按行读取图像路径、surv、status
         row = self.df.iloc[idx]
-        img = Image.open(os.path.join(BASE, row.patch_path)).convert('RGB')
+        img_path = os.path.join(BASE, row.patch_path)
+        img = Image.open(img_path).convert("RGB")
         x = self.tr(img)
-        return (
-            x,
-            torch.tensor(row.surv, dtype=torch.float32),
-            torch.tensor(row.status, dtype=torch.float32),
-        )
+        t = torch.tensor(row.surv,   dtype=torch.float32)
+        e = torch.tensor(row.status, dtype=torch.float32)
+        return x, t, e
 
-def convert_index(pids, full_df):
-    """根据 pid 列表映射出 patch 级索引列表"""
-    return full_df.index[full_df.pid.isin(pids)].tolist()
-
-def run_holdout(train_pids, val_pids, test_pids, expand_df):
-    """一次 Hold-out 划分：训练／验证／测试"""
-    # 1. patch 级映射
-    train_idx = convert_index(train_pids, expand_df)
-    val_idx   = convert_index(val_pids,   expand_df) if len(val_pids)>0 else []
-    test_idx  = convert_index(test_pids,  expand_df)
-
-    # 2. 保存索引
-    for name, idx in [('train', train_idx), ('valid', val_idx), ('test', test_idx)]:
-        path = os.path.join(LOG_DIR, f"{name}.csv")
-        np.savetxt(path, idx, delimiter=',', header='index', comments='')
-
-    # 3. DataLoader
-    train_ld = DataLoader(PatchDataset(expand_df.loc[train_idx]),
-                          batch_size=BATCH, shuffle=True, num_workers=4)
-    val_ld   = DataLoader(PatchDataset(expand_df.loc[val_idx]),
-                          batch_size=BATCH, shuffle=False, num_workers=4) if val_idx else None
-    test_ld  = DataLoader(PatchDataset(expand_df.loc[test_idx]),
-                          batch_size=BATCH, shuffle=False, num_workers=4)
-
-    # 4. 模型 & 优化器
-    in_ch = next(iter(train_ld))[0].shape[1]
-    model    = CNNSurv(in_ch).to(DEVICE)
+# -------------------- 训练函数 --------------------
+def train_on_df(train_df):
+    """
+    在给定的 DataFrame 上训练 POI 网络，返回训练完成的模型
+    """
+    print(f"\n[TRAIN] 开始训练，训练集患者数量：{train_df.pid.nunique()}，Patch 数量：{len(train_df)}")
+    loader = DataLoader(
+        PatchDataset(train_df),
+        batch_size=BATCH, shuffle=True, num_workers=4
+    )
+    # 构建模型、优化器、损失函数
+    in_ch = next(iter(loader))[0].shape[1]
+    model = CNNSurv(in_ch).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-    criterion = CoxPHLoss()
+    loss_fn = CoxPHLoss()
 
-    # 5. 训练 + 验证
-    best_val_c = 0.0
+    # 训练 EPOCHS 轮
+    model.train()
     for ep in range(1, EPOCHS+1):
-        model.train()
-        for x, t, e in train_ld:
+        epoch_loss = 0.0
+        for x, t, e in loader:
             x, t, e = x.to(DEVICE), t.to(DEVICE), e.to(DEVICE)
-            loss = criterion(model(x), t, e)
-            optimizer.zero_grad(); loss.backward(); optimizer.step()
+            loss = loss_fn(model(x), t, e)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item()
+        print(f"[TRAIN] Epoch {ep}/{EPOCHS} 完成，平均 Loss = {epoch_loss/len(loader):.4f}")
+    return model
 
-        if val_ld:
-            model.eval()
-            all_r, all_t, all_e = [], [], []
-            with torch.no_grad():
-                for x, t, e in val_ld:
-                    x, t, e = x.to(DEVICE), t.to(DEVICE), e.to(DEVICE)
-                    all_r.append(model(x)); all_t.append(t); all_e.append(e)
-            risk = torch.cat(all_r); tvec = torch.cat(all_t); evel = torch.cat(all_e)
-            val_c = c_index_torch(risk, tvec, evel)
-            best_val_c = max(best_val_c, val_c)
-            print(f"Epoch {ep:02d}  val C-index = {val_c:.4f}")
+# -------------------- 留一法主流程 --------------------
+def loocv_and_aggregate():
+    # 1) 读取扩展标签 CSV
+    df = pd.read_csv(EXP_CSV)
+    pids = df.pid.unique()
 
-    # 6. 测试
-    model.eval()
-    all_r, all_t, all_e = [], [], []
-    with torch.no_grad():
-        for x, t, e in test_ld:
-            x, t, e = x.to(DEVICE), t.to(DEVICE), e.to(DEVICE)
-            all_r.append(model(x)); all_t.append(t); all_e.append(e)
-    risk = torch.cat(all_r); tvec = torch.cat(all_t); evel = torch.cat(all_e)
-    test_c = c_index_torch(risk, tvec, evel)
-    print(f"**TEST C-index = {test_c:.4f}**")
+    all_risk = []  # 汇总所有 patch 的风险
+    all_t    = []  # 汇总所有 patch 的生存时间
+    all_e    = []  # 汇总所有 patch 的事件指示
 
-    return best_val_c, test_c
+    # 对每个患者留一法
+    for pid in pids:
+        print(f"\n[LOOCV] 当前留出患者: {pid}")
+        train_df = df[df.pid != pid]
+        test_df  = df[df.pid == pid]
 
-def main():
-    # 读取 patch 级标签
-    expand_df = pd.read_csv(EXP_LABEL_CSV)
-    # 构建患者级标签
-    labels_df = expand_df[['pid','surv','status']].drop_duplicates().reset_index(drop=True)
-    all_pids  = labels_df.pid.values
+        # 2) 训练模型
+        model = train_on_df(train_df)
 
-    # 1) 随机（或固定）选一个做测试
-    random.seed(SEED)
-    test_pid = random.choice(all_pids)
-    remaining = [pid for pid in all_pids if pid != test_pid]
+        # 3) 在留出患者上做预测
+        print(f"[PREDICT] 在患者 {pid} 的 {len(test_df)} 个 patch 上预测风险")
+        test_loader = DataLoader(
+            PatchDataset(test_df), batch_size=BATCH,
+            shuffle=False, num_workers=4
+        )
+        model.eval()
+        with torch.no_grad():
+            for x, t, e in test_loader:
+                x, t, e = x.to(DEVICE), t.to(DEVICE), e.to(DEVICE)
+                r = model(x).cpu()
+                all_risk.append(r)
+                all_t.append(t.cpu())
+                all_e.append(e.cpu())
 
-    # 2) 在剩余里随机选一个做验证
-    val_pid = random.choice(remaining)
-    train_pids = [pid for pid in remaining if pid != val_pid]
+    # 4) 聚合预测并计算最终 C-index
+    risks = torch.cat(all_risk).squeeze().numpy()
+    times = torch.cat(all_t).squeeze().numpy()
+    evs   = torch.cat(all_e).squeeze().numpy()
+    cidx = c_index_torch(
+        torch.from_numpy(risks),
+        torch.from_numpy(times),
+        torch.from_numpy(evs)
+    )
+    print(f"\n[RESULT] LOOCV 聚合后的 C-index = {cidx:.4f}")
 
-    print("Train PIDs:", train_pids)
-    print("Valid PID: ", val_pid)
-    print("Test  PID: ", test_pid)
-
-    # 3) 一次 Hold-out 训练/评估
-    best_val_c, test_c = run_holdout(train_pids, [val_pid], [test_pid], expand_df)
-
-    print("Final best val C-index =", best_val_c)
-    print("Final test C-index    =", test_c)
-
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    print("===== 开始 LOOCV 聚合 C-index 计算 =====")
+    loocv_and_aggregate()
