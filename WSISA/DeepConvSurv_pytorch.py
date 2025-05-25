@@ -7,6 +7,24 @@ from __future__ import print_function
 import time
 import os
 import numpy as np
+
+import sys
+try:
+    # 新版 Theano 把 downsample 放到 signal.pool
+    from theano.tensor.signal import pool as signal_pool
+except ImportError:
+    # 如果 theano 版本更旧，直接导入也没问题
+    from theano.tensor.signal import downsample as signal_pool
+
+import types
+# 构造一个假的 module，给 Lasagne 的 `import downsample` 使用
+downsample = types.SimpleNamespace(
+    max_pool_2d = getattr(signal_pool, 'pool_2d', getattr(signal_pool, 'max_pool_2d', None)),
+    avg_pool_2d = getattr(signal_pool, 'pool_2d', getattr(signal_pool, 'avg_pool_2d', None))
+)
+# 插入到 sys.modules，这样 Lasagne 执行 `from theano.tensor.signal import downsample` 就会拿到它
+sys.modules['theano.tensor.signal.downsample'] = downsample
+
 import theano
 
 theano.config.floatX = 'float32'
