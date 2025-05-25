@@ -28,11 +28,11 @@ WSISA/
 │   ├── patches_1000_cls10.csv     # 聚类结果文件
 │   └── patches_1000_cls10/        # 聚类结果文件夹
 │       ├── WSI_001/
-│       │   ├── patch_0001.png
-│       │   └── patch_0002.png
+│       │   ├── patch_0001.jpg
+│       │   └── patch_0002.jpg
 │       └── WSI_002/
-│           ├── patch_0001.png
-│           └── patch_0002.png
+│           ├── patch_0001.jpg
+│           └── patch_0002.jpg
 ├── log/                          # 日志文件
 │   ├── log.txt                   # 训练日志
 │   └── log_selected.txt          # 选簇日志
@@ -91,14 +91,30 @@ pip install faiss-cpu
 
 1. 遍历 data/patches 下所有子文件夹（每个子文件夹对应一个 WSI），将所有子文件夹里 .png 补丁文件一次性收集到一个列表里；
 2. 对这个列表中的所有补丁一并做 PCA 降维和 K-Means 聚类； 
-3. 最终输出一个全局的聚类结果 CSV。
+3. 最终输出一个全局的聚类结果 CSV。patch_path表示该补丁文件在磁盘上的完整路径（data/patches/...）；slide_id表示所属的 WSI 名称（即该 patch 来自哪个切片）；cluster_label表示该 patch 被划分到的簇编号（0 到 9，共 10 个簇）
+
+
+```bash
+data/patches/WSI_002/patch_0456.jpg,WSI_002,3
+```
+表示这是 WSI “WSI_002” 里第 456 张 patch；在全局聚类（对所有 patch 做 PCA + KMeans）里，它被分到了第 3 号簇。
+
+你可以按 cluster_label 分组，查看每个簇里有哪些 patch；也可以按 slide_id 分组，查看同一张切片在不同簇中的 patch 分布。
 
 
 
 ### 3. 簇选择 (Select Clusters)
 使用 DeepConvSurv 在每个簇内独立训练生存模型，并根据验证集表现选择最佳簇。
 
-### 集成与模型训练 (Integration & Training)
+首先我们需要病人级别标签文件 （label_path）
+```csv
+pid, 病人或切片的唯一 ID（与 patch 的父文件夹同名）
+surv, 生存时间（通常按天或月计）
+status, 事件指示（0=截尾，1=事件/死亡）
+```
+
+
+### 4. 集成与模型训练 (Integration & Training)
 将选中的簇整合，提取对应 patch 的特征并进行最终生存模型训练。
 
 ### 生存预测 (Survival Prediction)
