@@ -68,7 +68,7 @@ save_dir = os.path.join("data", "patches", slide_basename)
 
 时间较长，需要耐心等待。
 
-![](media/2025-05-24-22-43-03.png)
+![](media_/2025-05-24-22-43-03.png)
 
 ### 2. PCA降维 + 聚类 `pca_cluster_img.py`
 对所有提取好的 patches 进行 PCA 降维并 K-Means 聚类。
@@ -102,7 +102,7 @@ data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_1445.jpg,TCGA-BL-A3JM-01Z-00-DX1..
 你可以按 cluster_label 分组，查看每个簇里有哪些 patch；也可以按 slide_id 分组，查看同一张切片在不同簇中的 patch 分布。
 
 运行结果如下：
-![](media/2025-05-25-11-06-37.png)
+![](media_/2025-05-25-11-06-37.png)
 
 检查聚类结果，存在文件 `cluster_result/patches_1000_cls10.csv`，包含了每个 patch 的聚类结果。
 
@@ -110,7 +110,7 @@ data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_1445.jpg,TCGA-BL-A3JM-01Z-00-DX1..
 patch_path, slide_id, pid, cluster
 data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1..., TCGA-BL-A3JM, 6
 ```
-![](media/2025-05-25-11-07-37.png)
+![](media_/2025-05-25-11-07-37.png)
 
 
 
@@ -127,9 +127,9 @@ data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1.
 patch_path, slide_id, pid, cluster, surv, status
 data/patches/TCGA-BL-A3JM-01Z-…/patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1…, TCGA-BL-A3JM, 6, 562, 0
 ```
-![](media/2025-05-25-13-35-30.png)
-![](media/2025-05-25-13-32-53.png)
-![](media/2025-05-25-13-33-19.png)
+![](media_/2025-05-25-13-35-30.png)
+![](media_/2025-05-25-13-32-53.png)
+![](media_/2025-05-25-13-33-19.png)
 
 
 ### 3.2 簇选择 `cluster_select_deepconvsurv_pytorch.py`
