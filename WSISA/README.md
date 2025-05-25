@@ -11,6 +11,8 @@ WSISA/
 ├── networks.py                    # 定义网络结构（DeepConvSurv/PyTorch 版本）
 ├── main_WSISA_selectedCluster.py  # 第三步：集成已选簇进行特征提取与生存模型训练
 ├── test.py                        # 简单测试脚本
+├── deep_networks.py                 # DeepConvSurv 网络定义
+├── cluster_select_deepconvsurv.py   # 备用：深度模型训练/验证脚本
 ├── data/
 │   ├── WSI/                      # 原始 WSI 图像文件
 │   │   ├── WSI_001.svs
