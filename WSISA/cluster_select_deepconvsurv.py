@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 '''
-..
+./cluster_select_deepconvsurv.py
 This is to do model selection among survival models.
 Implemented as Functional Procedure
 '''

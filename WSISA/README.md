@@ -10,7 +10,7 @@ WSISA/
 ├── WSISA_utils.py                 # 公用工具函数（如图像预处理、度量计算等）
 ├── networks.py                    # 定义网络结构（DeepConvSurv/PyTorch 版本）
 ├── main_WSISA_selectedCluster.py  # 第三步：集成已选簇进行特征提取与生存模型训练
-├── test.py                        # 简单测试脚本
+├── expand_cluster_labels.py
 ├── deep_networks.py                 # DeepConvSurv 网络定义
 ├── cluster_select_deepconvsurv.py   # 备用：深度模型训练/验证脚本
 ├── data/
@@ -87,11 +87,13 @@ pip install faiss-cpu
 
 1. 遍历 data/patches 下所有子文件夹（每个子文件夹对应一个 WSI），将所有子文件夹里 .png 补丁文件一次性收集到一个列表里；
 2. 对这个列表中的所有补丁一并做 PCA 降维和 K-Means 聚类； 
-3. 最终输出一个全局的聚类结果 CSV。patch_path表示该补丁文件在磁盘上的完整路径（data/patches/...）；slide_id表示所属的 WSI 名称（即该 patch 来自哪个切片）；cluster_label表示该 patch 被划分到的簇编号（0 到 9，共 10 个簇）
+3. 最终输出一个全局的聚类结果 CSV。
 
-
-```bash
-data/patches/WSI_002/patch_0456.jpg,WSI_002,3
+```csv
+patch_path,slide_id,pid,cluster
+data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_0490.jpg,TCGA-BL-A3JM-01Z-00-DX1...,TCGA-BL-A3JM,6
+data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_1445.jpg,TCGA-BL-A3JM-01Z-00-DX1...,TCGA-BL-A3JM,3
+...
 ```
 表示这是 WSI “WSI_002” 里第 456 张 patch；在全局聚类（对所有 patch 做 PCA + KMeans）里，它被分到了第 3 号簇。
 
@@ -108,20 +110,12 @@ data/patches/WSI_002/patch_0456.jpg,WSI_002,3
 ### 3. 簇选择 (Select Clusters) `main_WSISA_selectedCluster.py`
 使用 DeepConvSurv 在每个簇内独立训练生存模型，并根据验证集表现选择最佳簇。
 
-#### 3.1 标签扩展
+#### 3.1 标签扩展 `expand_cluster_labels.py`
 首先我们需要病人级别标签文件 （label_path）
 ```csv
 pid, 病人或切片的唯一 ID（与 patch 的父文件夹同名）
 surv, 生存时间（通常按天或月计）
 status, 事件指示（0=截尾，1=事件/死亡）
-```
-
-如下所示：
-```csv
-pid,surv,status
-WSI_001,563,1
-WSI_002,412,0
-...
 ```
 
 convert_index 函数先以 pid 为单位分割，然后再用 expand_label（下文）映射到具体的 patch 行号。
@@ -132,6 +126,12 @@ img, patch 的相对或绝对路径
 surv, 重复该病人的生存时间
 status, 重复该病人的事件指示
 cluster, 该 patch 在步骤2 聚类时分到的簇编号（0 到 C−1）
+```
+
+输出文件 patches_1000_cls10_expanded.csv 示例：
+```csv
+patch_path, slide_id, pid, cluster, surv, status
+data/patches/TCGA-BL-A3JM-01Z-…/patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1…, TCGA-BL-A3JM, 6, 562, 0
 ```
 
 
