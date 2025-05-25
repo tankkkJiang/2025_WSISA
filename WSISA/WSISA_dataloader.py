@@ -1,4 +1,6 @@
 """
+WSISA/WSISA_dataloader
+
 Define pytorch dataloader for MIL datasets
 
 

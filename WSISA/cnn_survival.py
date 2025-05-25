@@ -1,4 +1,4 @@
-# cnn_survival.py
+# WSISA/cnn_survival.py
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

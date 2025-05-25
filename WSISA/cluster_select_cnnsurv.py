@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# cluster_select_holdout.py
+# cluster_select_cnnsurv.py
 
 import os, random
 import numpy as np, pandas as pd
