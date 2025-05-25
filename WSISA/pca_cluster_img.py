@@ -35,14 +35,23 @@ def get_file_list(fPath, fType, str_include='', str_exclude=' ', exclude_dirs=No
     return img_list
 
 
+
 def get_pca_reducer_incremental(tr_tensor, n_comp=10):
-    """增量 PCA，用于大规模数据降维"""
+    """
+    增量 PCA，用于大规模数据降维
+    跳过掉最后那一小批 (< n_comp) 的样本。
+    """
     bs = 100
-    pca = IncrementalPCA(n_components=n_comp, batch_size=bs)
+    pca = IncrementalPCA(n_components=n_comp)
     print(f"[INFO] IncrementalPCA 开始, 组件数 {n_comp}, 批大小 {bs}")
     for i in range(0, len(tr_tensor), bs):
-        print(f"[INFO] 训练第 {i//bs} 批: 索引 {i} 到 {min(i+bs, len(tr_tensor))}")
-        pca.partial_fit(tr_tensor[i:i+bs, :])
+        end = min(i + bs, len(tr_tensor))
+        batch = tr_tensor[i:end]
+        print(f"[INFO] 训练第 {i//bs} 批: 索引 {i} 到 {end}  (batch size={batch.shape[0]})")
+        if batch.shape[0] < n_comp:
+            print(f"[WARN] 批大小 {batch.shape[0]} < n_components={n_comp}, 跳过")
+            break
+        pca.partial_fit(batch)
     return pca
 
 
