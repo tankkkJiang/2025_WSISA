@@ -6,7 +6,7 @@ from __future__ import print_function
 
 import time
 import os
-os.environ['THEANO_FLAGS'] = "floatX=float32,blas.ldflags=,device=cpu"
+os.environ['AESARA_FLAGS'] = "floatX=float32,device=cpu,blas.ldflags=,linker=vm"
 
 import numpy as np
 if not hasattr(np, 'bool'):
