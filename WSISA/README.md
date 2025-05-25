@@ -103,7 +103,12 @@ data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_1445.jpg,TCGA-BL-A3JM-01Z-00-DX1..
 运行结果如下：
 ![](media/2025-05-25-11-06-37.png)
 
-检查聚类结果。
+检查聚类结果，存在文件 `cluster_result/patches_1000_cls10.csv`，包含了每个 patch 的聚类结果。
+
+```csv
+patch_path, slide_id, pid, cluster
+data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1..., TCGA-BL-A3JM, 6
+```
 ![](media/2025-05-25-11-07-37.png)
 
 
@@ -113,15 +118,17 @@ data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_1445.jpg,TCGA-BL-A3JM-01Z-00-DX1..
 
 #### 3.1 标签扩展 `expand_cluster_labels.py`
 我们需要patients.csv和cluster_result/patches_1000_cls10.csv两个文件来扩展标签。
-`patients.csv` 文件包含了每个病人的生存时间和状态信息。
-
-convert_index 函数先以 pid 为单位分割，然后再用 expand_label（下文）映射到具体的 patch 行号。
+1. `patients.csv` 文件包含了每个病人的生存时间和状态信息。
+2. `cluster_result/patches_1000_cls10.csv` 文件包含了每个 patch 的聚类结果。
 
 输出文件 `cluster_result/patches_1000_cls10_expanded.csv` 示例：
 ```csv
 patch_path, slide_id, pid, cluster, surv, status
 data/patches/TCGA-BL-A3JM-01Z-…/patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1…, TCGA-BL-A3JM, 6, 562, 0
 ```
+![](media/2025-05-25-13-35-30.png)
+![](media/2025-05-25-13-32-53.png)
+![](media/2025-05-25-13-33-19.png)
 
 
 ### 4. 集成与模型训练 (Integration & Training)

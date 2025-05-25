@@ -92,7 +92,7 @@ def main():
 
         # -------- DeepConvSurv 输入尺寸推断 --------
         sample_patch = Image.open(expand_df['patch_path'].iloc[0])
-        h, w = sample_patch.size
+        w , h = sample_patch.size
         c    = len(sample_patch.getbands())
 
         # -------- 训练模型 --------
@@ -102,8 +102,8 @@ def main():
         c_index = net.train(data_path=PATCHES_ROOT,
                             label_path=EXP_LABEL_CSV,
                             train_index=train_idx,
-                            test_index=valid_idx,
-                            valid_index=test_idx,
+                            test_index=test_idx,
+                            valid_index=valid_idx,
                             model_index=fold,
                             cluster=None,
                             batch_size=batchsize,
