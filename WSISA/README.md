@@ -13,7 +13,8 @@ WSISA/
 ├── expand_cluster_labels.py
 ├── deep_networks.py                 # DeepConvSurv 网络定义
 ├── cluster_select_deepconvsurv_pytorch.py   # 深度模型训练/验证
-脚本
+├── cnn_survival.py             # 自定义模型
+├── cluster_select_cnnsurv.py   # 选择簇
 ├── data/
 │   ├── WSI/                      # 原始 WSI 图像文件
 │   │   ├── WSI_001.svs
@@ -132,6 +133,26 @@ data/patches/TCGA-BL-A3JM-01Z-…/patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1…, TC
 
 
 ### 3.2 簇选择 `cluster_select_deepconvsurv_pytorch.py`
+
+#### 3.2.1 原始代码五折划分
+在原始这段脚本里，五折划分（5-fold）是一个“两层分层抽样”的过程，目的是：
+1. **患者级别**：在患者（pid）级别上把所有患者分成 5 份，做 5 折交叉验证。每一次折里，算法会给出两组患者 ID：一组做训练，另一组做测试。“分层”保证每组中的 “有事件(1)” vs “无事件(0)” 患者比例和全体一致。在训练患者里再抽一小部分出来当验证集，剩下的继续当训练集。
+2. **Patch级别**：上面那一步拿到的是 哪些患者该训练 / 验证 / 测试。进行筛选和转化后利用海量的 patch 样本来训练你的网络，同时在真正“没见过”的新患者身上评估模型。
+
+循环 5 次，每折记录验证和测试的 C-index，最后汇总平均与标准差。
+
+这样既保证了病人级互斥（测试时全是“没见过”的患者），又利用了补丁级样本数来训练深度网络。
+
+#### 3.2.2 自定义网络 `cnn_survival.py`, `cluster_select_cnnsurv.py`
+由于我们只使用5张WSI文件，故只有5个病人，不能进行五折交叉验证。
+
+我们选取的解决方案是：
+
+1. 固定 1 个患者做测试集；
+2. 其余 4 个患者用 StratifiedShuffleSplit 抽 1 个验证、3 个训练。
+
+只跑一次，评估更稳定（因为测试集固定），也可留更多数据训练最终模型。
+
 
 
 ### 生存预测 (Survival Prediction)
