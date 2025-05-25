@@ -16,10 +16,10 @@ if not hasattr(np, 'int'):
 if not hasattr(np, 'object'):
     np.object = object
 
-import theano
+import aesara as theano
+theano.config.floatX = "float32"
+import aesara.tensor as T
 
-theano.config.floatX = 'float32'
-import theano.tensor as T
 import lasagne
 from lasagne.layers import batch_norm
 from lifelines.utils import concordance_index

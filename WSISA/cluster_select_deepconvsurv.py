@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 """
+WSISA/clyster_select_deepconvsurv.py
+
 Model‑selection script for DeepConvSurv under the **new WSISA repo layout**.
 The training / validation logic is **unchanged** – only paths, default names
 and a few hard‑coded placeholders were updated so that the script runs
