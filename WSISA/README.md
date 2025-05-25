@@ -46,7 +46,7 @@ WSISA/
 ```
 
 ## 实验步骤
-### 1. 得到 patches
+### 1. 得到 patches `extract_patches.py`
 从 WSI 中提取图像块（patches），并保存到指定目录。
 
 ```bash
@@ -72,7 +72,7 @@ save_dir = os.path.join("data", "patches", slide_basename)
 
 ![](media/2025-05-24-22-43-03.png)
 
-### 2. PCA降维 + 聚类
+### 2. PCA降维 + 聚类 `pca_cluster_img.py`
 对所有提取好的 patches 进行 PCA 降维并 K-Means 聚类。
 ```bash
 python pca_cluster_img.py
@@ -103,7 +103,7 @@ data/patches/WSI_002/patch_0456.jpg,WSI_002,3
 
 
 
-### 3. 簇选择 (Select Clusters)
+### 3. 簇选择 (Select Clusters) `main_WSISA_selectedCluster.py`
 使用 DeepConvSurv 在每个簇内独立训练生存模型，并根据验证集表现选择最佳簇。
 
 首先我们需要病人级别标签文件 （label_path）
@@ -111,6 +111,24 @@ data/patches/WSI_002/patch_0456.jpg,WSI_002,3
 pid, 病人或切片的唯一 ID（与 patch 的父文件夹同名）
 surv, 生存时间（通常按天或月计）
 status, 事件指示（0=截尾，1=事件/死亡）
+```
+
+如下所示：
+```csv
+pid,surv,status
+WSI_001,563,1
+WSI_002,412,0
+...
+```
+
+convert_index 函数先以 pid 为单位分割，然后再用 expand_label（下文）映射到具体的 patch 行号。
+
+```csv
+pid, 该 patch 属于哪个病人
+img, patch 的相对或绝对路径
+surv, 重复该病人的生存时间
+status, 重复该病人的事件指示
+cluster, 该 patch 在步骤2 聚类时分到的簇编号（0 到 C−1）
 ```
 
 
