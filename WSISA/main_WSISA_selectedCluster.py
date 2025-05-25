@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 '''
+WSISA/main_WSISA_selectedCluster.py
+
 Re-inplement of old WSISA with selected cluster. (CVPR 2017)
 Implemented as Functional Procedure
 

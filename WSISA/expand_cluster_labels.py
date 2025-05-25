@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# expand_cluster_labels.py
+# WSISA/expand_cluster_labels.py
 # ------------------------------------------------------------
 # 把聚类结果 CSV 与 TCGA 临床信息合并，生成带 surv / status 的补丁级标签
 # ------------------------------------------------------------
