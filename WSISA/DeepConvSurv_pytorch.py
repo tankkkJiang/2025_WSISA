@@ -1,3 +1,5 @@
+# ./DeepConvSurv_pytorch.py
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -24,8 +26,8 @@ import torchvision.transforms as transforms
 
 from deep_networks import DeepSurv
 from deep_networks import NegativeLogLikelihood
-from utils import c_index
-from utils import adjust_learning_rate
+from deep_utils import c_index
+from deep_utils import adjust_learning_rate
 
 
 class DeepConvSurv:

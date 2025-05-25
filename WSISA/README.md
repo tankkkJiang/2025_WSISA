@@ -26,13 +26,7 @@ WSISA/
 │   └── patients.csv              # 病人相关标签信息
 ├── cluster_result/               # 聚类结果
 │   ├── patches_1000_cls10.csv     # 聚类结果文件
-│   └── patches_1000_cls10/        # 聚类结果文件夹
-│       ├── WSI_001/
-│       │   ├── patch_0001.jpg
-│       │   └── patch_0002.jpg
-│       └── WSI_002/
-│           ├── patch_0001.jpg
-│           └── patch_0002.jpg
+│   └── patches_1000_cls10_expanded.csv # 扩展
 ├── log/                          # 日志文件
 │   ├── log.txt                   # 训练日志
 │   └── log_selected.txt          # 选簇日志
@@ -101,11 +95,18 @@ data/patches/WSI_002/patch_0456.jpg,WSI_002,3
 
 你可以按 cluster_label 分组，查看每个簇里有哪些 patch；也可以按 slide_id 分组，查看同一张切片在不同簇中的 patch 分布。
 
+运行结果如下：
+![](media/2025-05-25-10-17-15.png)
+
+检查聚类结果，发现没有表头，第一行就是数据。
+![](media/2025-05-25-10-18-23.png)
+
 
 
 ### 3. 簇选择 (Select Clusters) `main_WSISA_selectedCluster.py`
 使用 DeepConvSurv 在每个簇内独立训练生存模型，并根据验证集表现选择最佳簇。
 
+#### 3.1 标签扩展
 首先我们需要病人级别标签文件 （label_path）
 ```csv
 pid, 病人或切片的唯一 ID（与 patch 的父文件夹同名）
