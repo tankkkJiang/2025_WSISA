@@ -7,18 +7,20 @@
 # ------------------------------------------------------------
 import os
 import numpy as np
-import pandas as pd
-from PIL import Image
-from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
-
-import DeepConvSurv_pytorch as deep_conv_surv  # 请确保已放在 PYTHONPATH
-
+# 必须在导入任何依赖 np.bool / np.int 的库前执行
 if not hasattr(np, 'bool'):
     np.bool = bool
 if not hasattr(np, 'int'):
     np.int = int
 if not hasattr(np, 'object'):
     np.object = object
+
+
+import pandas as pd
+from PIL import Image
+from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
+
+import DeepConvSurv_pytorch as deep_conv_surv  # 请确保已放在 PYTHONPATH
 
 # ============= 全局路径 =============
 BASE_DIR        = os.path.abspath(os.path.dirname(__file__))
