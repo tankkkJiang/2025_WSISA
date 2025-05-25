@@ -66,9 +66,9 @@ slide_basename = os.path.splitext(slide_name)[0]
 save_dir = os.path.join("data", "patches", slide_basename)
 ```
 
-时间较长，需要耐心等待。
+时间较长，需要耐心等待。我们一共处理7张WSI文件。
 
-![](media/2025-05-24-22-43-03.png)
+![](media/2025-05-26-00-13-07.png)
 ![](media/2025-05-25-22-30-30.png)
 ![](media/2025-05-25-22-30-50.png)
 ![](media/2025-05-25-22-31-09.png)
@@ -92,10 +92,16 @@ conda install -c conda-forge faiss-gpu
 pip install faiss-cpu
 ```
 
-1. 遍历 data/patches 下所有子文件夹（每个子文件夹对应一个 WSI），将所有子文件夹里 .png 补丁文件一次性收集到一个列表里；
-2. 对这个列表中的所有补丁一并做 PCA 降维和 K-Means 聚类； 
-3. 最终输出一个全局的聚类结果 CSV，命名为 `patches_1000_cls10.csv`，包含了每个补丁的路径、WSI ID、患者 ID 和聚类簇 ID。
+1. **初始化**：遍历 data/patches 下所有子文件夹（每个子文件夹对应一个 WSI），将所有子文件夹里 .png 补丁文件一次性收集到一个列表里；
+2. **对这个列表中的所有补丁一并做 PCA 降维和 K-Means 聚类**：将这些补丁图像patches缩放、展平成向量后，用增量PCA将维度从（50×50×3≈7500）降到 n_comp（这里固定为 50）。再用 KMeans 将所有补丁分成 num_clusters 个簇；
+3. **输出**：最终会在 cluster_result/ 目录里生成一个名为命名为 `patches_1000_cls10.csv`，实际是包含了每个补丁的路径、WSI ID、患者 ID 和聚类簇 ID。
 
+输出命名为：注意每个子文件夹（每 个 WSI）随机抽样最多 1000 张补丁时所用的那个阈值为 `num_file`，聚类数为 `num_clusters`。
+```bash
+patches_<num_file>_cls<num_clusters>.csv
+```
+
+输出文件 `cluster_result/patches_1000_cls10.csv` 示例：
 ```csv
 patch_path,slide_id,pid,cluster
 data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_0490.jpg,TCGA-BL-A3JM-01Z-00-DX1...,TCGA-BL-A3JM,6
@@ -107,7 +113,25 @@ data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_1445.jpg,TCGA-BL-A3JM-01Z-00-DX1..
 你可以按 cluster_label 分组，查看每个簇里有哪些 patch；也可以按 slide_id 分组，查看同一张切片在不同簇中的 patch 分布。
 
 运行结果如下：
-![](media/2025-05-25-11-06-37.png)
+```bash
+(base) root@gz-ins-678868173725701:~/WSISA# python pca_cluster_img.py                              
+遍历目录 data/patches: 100%|█████████████████████████████████████████████████| 8/8 [00:00<00:00, 459.12it/s]
+[INFO] 找到 26526 个 '*jpg' 文件
+[INFO] data_dir: data/patches
+[INFO] WSI 子文件夹: 7 个
+[INFO] Total patches: 26526
+[INFO] 聚类开始: WSI 路径 data/patches, 使用补丁数 26526
+[INFO] 开始读取并展平 26526 张图像
+读取图像: 100%|██████████████████████████████████████████████████████| 26526/26526 [01:40<00:00, 263.94it/s]
+[INFO] 图像张量形状: (26526, 7500)
+[INFO] IncrementalPCA 开始, 组件数 50, 批大小 100
+
+[INFO] 开始 KMeans: 样本数 26526, 簇数 10
+[INFO] 保存聚类结果到 cluster_result/patches_1000_cls10.csv
+[INFO] 完成聚类: 共写入 26526 条记录
+```
+
+![](media/2025-05-26-00-25-21.png)
 
 检查聚类结果，存在文件 `cluster_result/patches_1000_cls10.csv`，包含了每个 patch 的聚类结果。
 
@@ -135,12 +159,13 @@ data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1.
 
 输出文件 `cluster_result/patches_1000_cls10_expanded.csv` 示例：
 ```csv
-patch_path, slide_id, pid, cluster, surv, status
-data/patches/TCGA-BL-A3JM-01Z-…/patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1…, TCGA-BL-A3JM, 6, 562, 0
+patch_path,slide_id,pid,cluster,surv,status
+data/patches/TCGA-SY-A9G0-01Z-00-DX1.6F019857-03C8-4B2B-8892-32CBF3EB303F/patch_4633.jpg,TCGA-SY-A9G0-01Z-00-DX1.6F019857-03C8-4B2B-8892-32CBF3EB303F,TCGA-SY-A9G0,5,1008.0,1.0
+data/patches/TCGA-S5-AA26-01Z-00-DX1.10D28D0C-D537-485E-A371-E3C60ED66FE7/patch_5949.jpg,TCGA-S5-AA26-01Z-00-DX1.10D28D0C-D537-485E-A371-E3C60ED66FE7,TCGA-S5-AA26,0,503.0,0.0
 ```
-![](media/2025-05-25-13-35-30.png)
+![](media/2025-05-26-00-28-14.png)
 ![](media/2025-05-25-13-32-53.png)
-![](media/2025-05-25-13-33-19.png)
+![](media/2025-05-26-00-29-38.png)
 
 
 ### 3.2 簇选择 `cluster_select_deepconvsurv_pytorch.py`
