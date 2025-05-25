@@ -27,8 +27,7 @@ except Exception:
     )
 
 # ----------------- 2. 读患者表 -----------------
-# 绝大部分 TCGA 临床下载文件是制表符分隔
-df_pat = pd.read_csv(PATIENTS_CSV, sep='\t', low_memory=False)
+df_pat = pd.read_csv(PATIENTS_CSV, low_memory=False)
 
 # 只保留我们需要的列：barcode, vital_status, days_to_death, days_to_last_follow_up
 keep_cols = ['barcode', 'vital_status', 'days_to_death', 'days_to_last_follow_up']

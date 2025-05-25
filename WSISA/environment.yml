@@ -12,6 +12,7 @@ dependencies:
   - numpy
   - scipy
   - scikit-learn
+  - pandas
 
   # PCA / 聚类需要的库
   - scikit-learn

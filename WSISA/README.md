@@ -12,7 +12,8 @@ WSISA/
 ├── main_WSISA_selectedCluster.py  # 第三步：集成已选簇进行特征提取与生存模型训练
 ├── expand_cluster_labels.py
 ├── deep_networks.py                 # DeepConvSurv 网络定义
-├── cluster_select_deepconvsurv.py   # 备用：深度模型训练/验证脚本
+├── cluster_select_deepconvsurv.py   # 深度模型训练/验证
+脚本
 ├── data/
 │   ├── WSI/                      # 原始 WSI 图像文件
 │   │   ├── WSI_001.svs
@@ -100,10 +101,10 @@ data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_1445.jpg,TCGA-BL-A3JM-01Z-00-DX1..
 你可以按 cluster_label 分组，查看每个簇里有哪些 patch；也可以按 slide_id 分组，查看同一张切片在不同簇中的 patch 分布。
 
 运行结果如下：
-![](media/2025-05-25-10-17-15.png)
+![](media/2025-05-25-11-06-37.png)
 
-检查聚类结果，发现没有表头，第一行就是数据。
-![](media/2025-05-25-10-18-23.png)
+检查聚类结果。
+![](media/2025-05-25-11-07-37.png)
 
 
 
@@ -111,24 +112,12 @@ data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_1445.jpg,TCGA-BL-A3JM-01Z-00-DX1..
 使用 DeepConvSurv 在每个簇内独立训练生存模型，并根据验证集表现选择最佳簇。
 
 #### 3.1 标签扩展 `expand_cluster_labels.py`
-首先我们需要病人级别标签文件 （label_path）
-```csv
-pid, 病人或切片的唯一 ID（与 patch 的父文件夹同名）
-surv, 生存时间（通常按天或月计）
-status, 事件指示（0=截尾，1=事件/死亡）
-```
+我们需要patients.csv和cluster_result/patches_1000_cls10.csv两个文件来扩展标签。
+`patients.csv` 文件包含了每个病人的生存时间和状态信息。
 
 convert_index 函数先以 pid 为单位分割，然后再用 expand_label（下文）映射到具体的 patch 行号。
 
-```csv
-pid, 该 patch 属于哪个病人
-img, patch 的相对或绝对路径
-surv, 重复该病人的生存时间
-status, 重复该病人的事件指示
-cluster, 该 patch 在步骤2 聚类时分到的簇编号（0 到 C−1）
-```
-
-输出文件 patches_1000_cls10_expanded.csv 示例：
+输出文件 `cluster_result/patches_1000_cls10_expanded.csv` 示例：
 ```csv
 patch_path, slide_id, pid, cluster, surv, status
 data/patches/TCGA-BL-A3JM-01Z-…/patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1…, TCGA-BL-A3JM, 6, 562, 0
