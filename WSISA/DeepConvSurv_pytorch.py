@@ -6,6 +6,8 @@ from __future__ import print_function
 
 import time
 import os
+os.environ['THEANO_FLAGS'] = "floatX=float32,blas.ldflags=,device=cpu"
+
 import numpy as np
 if not hasattr(np, 'bool'):
     np.bool = bool
