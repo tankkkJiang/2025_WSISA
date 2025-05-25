@@ -69,9 +69,14 @@ save_dir = os.path.join("data", "patches", slide_basename)
 时间较长，需要耐心等待。
 
 ![](media/2025-05-24-22-43-03.png)
+![](media/2025-05-25-22-30-30.png)
+![](media/2025-05-25-22-30-50.png)
+![](media/2025-05-25-22-31-09.png)
 
 ### 2. PCA降维 + 聚类 `pca_cluster_img.py`
+
 对所有提取好的 patches 进行 PCA 降维并 K-Means 聚类。
+
 ```bash
 python pca_cluster_img.py
 ```
@@ -89,7 +94,7 @@ pip install faiss-cpu
 
 1. 遍历 data/patches 下所有子文件夹（每个子文件夹对应一个 WSI），将所有子文件夹里 .png 补丁文件一次性收集到一个列表里；
 2. 对这个列表中的所有补丁一并做 PCA 降维和 K-Means 聚类； 
-3. 最终输出一个全局的聚类结果 CSV。
+3. 最终输出一个全局的聚类结果 CSV，命名为 `patches_1000_cls10.csv`，包含了每个补丁的路径、WSI ID、患者 ID 和聚类簇 ID。
 
 ```csv
 patch_path,slide_id,pid,cluster
@@ -161,7 +166,7 @@ data/patches/TCGA-BL-A3JM-01Z-…/patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1…, TC
 
 这份代码完成了以下功能：簇/患者级的 train/val/test 划分 + CNN+CoxPH 的训练 + C-index 验证/测试。
 
-### 生存预测 (Survival Prediction)
+### 3.3 生存预测 (Survival Prediction)
 
 
 ## 原始仓库README
