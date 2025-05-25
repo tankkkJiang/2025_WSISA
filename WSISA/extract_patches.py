@@ -7,7 +7,7 @@ from PIL import Image
 
 # ------------------ 配置 ------------------
 # WSI 文件名（放在 data/WSI/ 目录下）
-slide_name = "TCGA-S5-AA26-01Z-00-DX1.10D28D0C-D537-485E-A371-E3C60ED66FE7.svs"
+slide_name = "TCGA-MV-A51V-01Z-00-DX1.5D626704-0803-4912-96D5-FB1EEFA509FB.svs"
 
 # 基于仓库根目录的相对路径
 slide_path = os.path.join("data", "WSI", slide_name)
