@@ -4,7 +4,7 @@
 
 ```bash
 WSISA/
-├── extract_patches.py             # (可选) 从 WSI 中提取图像块
+├── extract_patches.py             # 从 WSI 中提取图像块
 ├── pca_cluster_img.py             # 第一步：对所有图像块进行 PCA + 聚类
 ├── WSISA_dataloader.py            # 数据加载器，供后续训练与推理使用
 ├── WSISA_utils.py                 # 公用工具函数（如图像预处理、度量计算等）
@@ -68,7 +68,7 @@ save_dir = os.path.join("data", "patches", slide_basename)
 
 时间较长，需要耐心等待。
 
-![](media_/2025-05-24-22-43-03.png)
+![](media/2025-05-24-22-43-03.png)
 
 ### 2. PCA降维 + 聚类 `pca_cluster_img.py`
 对所有提取好的 patches 进行 PCA 降维并 K-Means 聚类。
@@ -102,7 +102,7 @@ data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_1445.jpg,TCGA-BL-A3JM-01Z-00-DX1..
 你可以按 cluster_label 分组，查看每个簇里有哪些 patch；也可以按 slide_id 分组，查看同一张切片在不同簇中的 patch 分布。
 
 运行结果如下：
-![](media_/2025-05-25-11-06-37.png)
+![](media/2025-05-25-11-06-37.png)
 
 检查聚类结果，存在文件 `cluster_result/patches_1000_cls10.csv`，包含了每个 patch 的聚类结果。
 
@@ -110,7 +110,7 @@ data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_1445.jpg,TCGA-BL-A3JM-01Z-00-DX1..
 patch_path, slide_id, pid, cluster
 data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1..., TCGA-BL-A3JM, 6
 ```
-![](media_/2025-05-25-11-07-37.png)
+![](media/2025-05-25-11-07-37.png)
 
 
 
@@ -122,14 +122,20 @@ data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1.
 1. `patients.csv` 文件包含了每个病人的生存时间和状态信息。
 2. `cluster_result/patches_1000_cls10.csv` 文件包含了每个 patch 的聚类结果。
 
+对`patients.csv`处理如下：只保留了 barcode（样本条码）、vital_status（生还／死亡状态）、days_to_death（若死亡，距死亡的天数）和 days_to_last_follow_up（若存活，距最后一次随访的天数）这四列。
+1. 以 barcode 按 - 分割，取前三段（例如 TCGA-BL-A3JM-... → TCGA-BL-A3JM），作为患者级别的 pid。
+2. 将文本标签映射为数值：死亡（Dead）->1、存活（Alive）->0。
+3. 计算生存时间则先把天数列转换为数值型，如果患者已亡（status==1），surv 取 days_to_death；否则取 days_to_last_follow_up。
+
+
 输出文件 `cluster_result/patches_1000_cls10_expanded.csv` 示例：
 ```csv
 patch_path, slide_id, pid, cluster, surv, status
 data/patches/TCGA-BL-A3JM-01Z-…/patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1…, TCGA-BL-A3JM, 6, 562, 0
 ```
-![](media_/2025-05-25-13-35-30.png)
-![](media_/2025-05-25-13-32-53.png)
-![](media_/2025-05-25-13-33-19.png)
+![](media/2025-05-25-13-35-30.png)
+![](media/2025-05-25-13-32-53.png)
+![](media/2025-05-25-13-33-19.png)
 
 
 ### 3.2 簇选择 `cluster_select_deepconvsurv_pytorch.py`
