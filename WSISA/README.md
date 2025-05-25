@@ -12,7 +12,7 @@ WSISA/
 ├── main_WSISA_selectedCluster.py  # 第三步：集成已选簇进行特征提取与生存模型训练
 ├── expand_cluster_labels.py
 ├── deep_networks.py                 # DeepConvSurv 网络定义
-├── cluster_select_deepconvsurv.py   # 深度模型训练/验证
+├── cluster_select_deepconvsurv_pytorch.py   # 深度模型训练/验证
 脚本
 ├── data/
 │   ├── WSI/                      # 原始 WSI 图像文件
@@ -131,8 +131,8 @@ data/patches/TCGA-BL-A3JM-01Z-…/patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1…, TC
 ![](media/2025-05-25-13-33-19.png)
 
 
-### 4. 集成与模型训练 (Integration & Training)
-将选中的簇整合，提取对应 patch 的特征并进行最终生存模型训练。
+### 3.2 簇选择 `cluster_select_deepconvsurv_pytorch.py`
+
 
 ### 生存预测 (Survival Prediction)
 
