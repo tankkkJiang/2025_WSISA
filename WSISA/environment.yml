@@ -32,6 +32,11 @@ dependencies:
   - pip
   - mkl        # Intel Math Kernel Library
   - mkl-service
+  - theano
+
+  - lasagne
+  - lifelines
+
 
   # 如果你还有部分包想从 pip 安装，放在下面
   - pip:

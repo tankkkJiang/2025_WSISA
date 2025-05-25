@@ -13,6 +13,13 @@ from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
 
 import DeepConvSurv_pytorch as deep_conv_surv  # 请确保已放在 PYTHONPATH
 
+if not hasattr(np, 'bool'):
+    np.bool = bool
+if not hasattr(np, 'int'):
+    np.int = int
+if not hasattr(np, 'object'):
+    np.object = object
+
 # ============= 全局路径 =============
 BASE_DIR        = os.path.abspath(os.path.dirname(__file__))
 DATA_DIR        = os.path.join(BASE_DIR, 'data')
