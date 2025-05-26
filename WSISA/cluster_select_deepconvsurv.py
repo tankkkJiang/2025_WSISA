@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-WSISA/cluster_select_deepconvsurv_pytorch.py
+WSISA/cluster_select_deepconvsurv.py
 
 Step‑3  : 训练每个簇的 DeepConvSurv, 计算 C‑index, 选出“判别力强”的簇
 使用 Leave‑One‑Patient‑Out(7 折) 而非原 5‑fold
