@@ -201,10 +201,37 @@ data/patches/TCGA-S5-AA26-01Z-00-DX1.10D28D0C-D537-485E-A371-E3C60ED66FE7/patch_
 
 这样既保证了病人级互斥（测试时全是“没见过”的患者），又利用了补丁级样本数来训练深度网络。
 
-#### 3.2.2 对原始代码进行改造 `cluster_select_deepconvsurv_pytorch.py`
+#### 3.2.2 对原始代码进行改造 `cluster_select_deepconvsurv_7.py`
 我们对原始代码进行了改造，主要是为了适应我们只有 7 个患者的情况。原始代码的五折交叉验证在这种情况下会报错。
 
-输出如下：
+打印了各簇的 patch 数量分布、总共涉及的患者数（7 位）、以及每位患者的 status（0/1）。
+
+```bash
+>>> cluster 分布:
+  cluster  0:   6593 patches
+  cluster  1:   6423 patches
+  cluster  2:     71 patches
+  cluster  3:    336 patches
+  cluster  4:   4593 patches
+  cluster  5:    522 patches
+  cluster  6:   8814 patches
+  cluster  7:    183 patches
+  cluster  8:    717 patches
+  cluster  9:   2330 patches
+
+>>> 数据集共有 7 位病人
+
+>>> 各患者生存状态:
+  TCGA-BL-A13J: [1.0]
+  TCGA-BL-A3JM: [1.0]
+  TCGA-HQ-A2OE: [0.0]
+  TCGA-HQ-A5ND: [1.0]
+  TCGA-MV-A51V: [0.0]
+  TCGA-S5-AA26: [0.0]
+  TCGA-SY-A9G0: [1.0]
+```
+
+结果输出如下：
 ```bash
 >>> C_THRESH = 0.5
 >>> 满足阈值的簇： [0, 1, 3, 4, 6, 7, 9]

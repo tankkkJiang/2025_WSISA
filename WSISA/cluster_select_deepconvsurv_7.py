@@ -154,8 +154,6 @@ for c in tqdm(clusters, desc="Clusters"):
     # 针对特殊值打印原因
     if c_idx == 0.0:
         print(f"  [Info] cluster {c}: C-index=0.0 可能因为测试集中无可比较生存对或所有status一致")
-    elif abs(c_idx - 0.5) < 1e-6:
-        print(f"  [Info] cluster {c}: C-index=0.5 表现相当于随机猜测，可能事件/删失平衡或样本过少")
 
     # 保存模型
     torch.save({"model": model.state_dict()},
