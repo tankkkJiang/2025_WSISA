@@ -64,7 +64,8 @@ def idx_of(pids):
 clusters = sorted(df["cluster"].unique())
 fold_cidx = {c: [] for c in clusters}
 
-for fold, test_pid in enumerate(unique_pids, start=1):
+# 用 tqdm 包裹 LOPO 折循环
+for fold, test_pid in enumerate(tqdm(unique_pids, desc="LOPO folds"), start=1):
     test_pids  = [test_pid]
     train_pids = [p for p in unique_pids if p not in test_pids]
     random.shuffle(train_pids)
@@ -82,7 +83,8 @@ for fold, test_pid in enumerate(unique_pids, start=1):
     def make_dataset(rows):
         """从 DataFrame rows 构造 (X, t, e)"""
         xs, ts, es = [], [], []
-        for _, r in rows.iterrows():
+        # 用 tqdm 展示加载进度
+        for _, r in tqdm(rows.iterrows(), total=len(rows), desc="  load patches", leave=False):
             img = Image.open(ROOT / r["patch_path"])
             xs.append(TRANSF(img))
             ts.append(float(r["surv"]))
@@ -93,8 +95,8 @@ for fold, test_pid in enumerate(unique_pids, start=1):
             torch.tensor(es, dtype=torch.float32),
         )
 
-    # 针对每个簇训练 & 测评
-    for c in clusters:
+    # 针对每个簇训练 & 测评，用 tqdm 包裹
+    for c in tqdm(clusters, desc=f" Fold {fold} clusters", leave=False):
         tr = df.loc[train_idx].query("cluster == @c")
         va = df.loc[valid_idx].query("cluster == @c")
         te = df.loc[test_idx].query("cluster == @c")
@@ -113,10 +115,12 @@ for fold, test_pid in enumerate(unique_pids, start=1):
         opt   = optim.Adam(model.parameters(), lr=LR)
 
         best_vc = 0.0
-        for ep in range(1, EPOCHS+1):
+        # 用 tqdm 包裹 epoch 循环
+        for ep in tqdm(range(1, EPOCHS+1), desc=f"   cluster {c} epochs", leave=False):
             model.train()
             perm = torch.randperm(Xtr.size(0))
-            for i in range(0, len(perm), BATCH_SIZE):
+            # 用 tqdm 包裹 batch 循环
+            for i in tqdm(range(0, len(perm), BATCH_SIZE), desc="    batches", leave=False):
                 idx = perm[i : i+BATCH_SIZE]
                 x   = Xtr[idx].to(DEVICE)
                 t   = Ttr[idx].to(DEVICE)

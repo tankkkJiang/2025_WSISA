@@ -13,8 +13,6 @@ WSISA/
 ├── expand_cluster_labels.py
 ├── deep_networks.py                 # DeepConvSurv 网络定义
 ├── cluster_select_deepconvsurv_pytorch.py   # 深度模型训练/验证
-├── cnn_survival.py             # 自定义模型
-├── cluster_select_cnnsurv.py   # 选择簇
 ├── data/
 │   ├── WSI/                      # 原始 WSI 图像文件
 │   │   ├── WSI_001.svs
@@ -143,7 +141,7 @@ data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1.
 
 
 
-### 3. 簇选择 (Select Clusters) `main_WSISA_selectedCluster.py`
+### 3. 簇选择 (Select Clusters)
 使用 DeepConvSurv 在每个簇内独立训练生存模型，并根据验证集表现选择最佳簇。
 
 #### 3.1 标签扩展 `expand_cluster_labels.py`
