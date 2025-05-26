@@ -27,13 +27,17 @@ from networks import DeepConvSurv, NegativeLogLikelihood, c_index_torch
 warnings.filterwarnings("ignore", category=UserWarning)
 
 # ============= 路径与常量 =============
+
+SEED = 1
+random.seed(SEED)
+torch.manual_seed(SEED)
+
 ROOT           = Path(__file__).resolve().parent
 PATCH_CSV      = ROOT / "cluster_result" / "patches_1000_cls10.csv"
 PATIENT_CSV    = ROOT / "data" / "patients.csv"
 MODEL_DIR      = ROOT / "log" / "wsisa_patch10" / "convimgmodel"
 SEL_FILE       = ROOT / "log" / "selected_clusters.txt"
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
-(SEED, random.seed(SEED), torch.manual_seed(SEED))
 
 EPOCHS      = 8
 BATCH_SIZE  = 64
