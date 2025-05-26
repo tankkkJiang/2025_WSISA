@@ -200,6 +200,10 @@ data/patches/TCGA-S5-AA26-01Z-00-DX1.10D28D0C-D537-485E-A371-E3C60ED66FE7/patch_
 
 ### 3.3 生存预测 (Survival Prediction)
 
+### 
+由于设备能力不足，无法运行原始代码的 DeepConvSurv 模型训练。我们使用了一个简化的 CNN 模型来进行生存预测。
+
+![](media/2025-05-26-10-50-50.png)
 
 ## 原始仓库README
 Implementation of WSISA CVPR 2017

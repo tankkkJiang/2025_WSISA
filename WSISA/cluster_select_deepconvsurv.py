@@ -35,7 +35,7 @@ MODEL_DIR  = ROOT / "log" / "wsisa_patch10" / "convimgmodel"
 SEL_FILE   = ROOT / "log" / "selected_clusters.txt"
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
-EPOCHS, BATCH_SIZE, LR = 3, 64, 1e-4   # 减少 epoch，加快演示
+EPOCHS, BATCH_SIZE, LR = 3, 16, 1e-4   # 减少 epoch，加快演示
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 C_THRESH = 0.0                         # 只要能算出 C-index 就保留
 
