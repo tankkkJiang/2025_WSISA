@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-WSISA/main_WSISA_selectedCluster_7.py
+WSISA/main_WSISA_selectedCluster_1fold.py
 
-Step‑4 (Aggregation):
-  - 读取已选簇的 patch‑level 模型
+Step-4 (Aggregation) 单折版:
+  - 读取已选簇的 patch-level 模型
   - 将 patch → patient (加权平均)
   - 导出 train / valid / test 三集合的患者级特征 & 风险
+  - 只运行一折，避免 LOPO-7 带来的长时间开销
 """
 import random
 from pathlib import Path
@@ -18,7 +19,7 @@ import torch
 import torchvision.transforms as T
 
 from networks import DeepConvSurv
-from utils.WSISA_utils import patient_features   # 已在 utils 里修过 import
+from utils.WSISA_utils import patient_features   # 仍可用旧实现
 
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -26,7 +27,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 # ---------------- paths & config ----------------
 ROOT        = Path(__file__).resolve().parent
-PATCH_CSV   = ROOT / "cluster_result" / "patches_1000_cls10_expanded.csv"   # ← 用扩展后的 CSV
+PATCH_CSV   = ROOT / "cluster_result" / "patches_1000_cls10_expanded.csv"
 MODEL_DIR   = ROOT / "log"    / "wsisa_patch10" / "convimgmodel"
 SEL_FILE    = ROOT / "log"    / "selected_clusters.txt"
 OUT_DIR     = ROOT / "results"
@@ -83,60 +84,44 @@ def make_patch_dataset(rows):
         return None, []
     return torch.stack(xs), pids
 
-
-def agg_weighted_features(patch_df: pd.DataFrame,
-                          sel_clusters,
-                          fea_dim: int) -> pd.DataFrame:
+def agg_weighted_features(patch_df, sel_clusters, fea_dim):
     """
-    显式实现论文里的加权平均 x_{ij} = w_{ij} * mean_k x_{ijk}
-    返回列: pid, surv, status, fea_0 ... fea_{J*fea_dim-1}
+    加权平均 x_{ij} = w_{ij} * mean_k x_{ijk}
+    返回患者级 DataFrame（pid, surv, status, fea_...）
     """
     patients = patch_df["pid"].unique().tolist()
-    rows_out = []
-
+    out_rows = []
     for pid in patients:
         df_p = patch_df[patch_df["pid"] == pid]
-        total_patches = len(df_p)
-        row = {
-            "pid":    pid,
-            "surv":   df_p["surv"].iloc[0],
-            "status": df_p["status"].iloc[0]
-        }
-        # 记录每个簇的权重 w_ij 用于可视化
-        weight_log = {}
-
-        feat_all = []
+        total = len(df_p)
+        row = {"pid": pid,
+               "surv": df_p["surv"].iloc[0],
+               "status": df_p["status"].iloc[0]}
+        feat_vec = []
         for c in sel_clusters:
             df_pc = df_p[df_p["cluster"] == c]
-            n_c   = len(df_pc)
-            if n_c == 0:
-                weight = 0.0
-                feat_c = torch.zeros(fea_dim)
+            n_c = len(df_pc)
+            w_ij = n_c / total if total else 0.0
+            if n_c:
+                mat = torch.tensor(
+                    df_pc.loc[:, [f"fea_{i}" for i in range(fe_dim)]].values,
+                    dtype=torch.float32)
+                x_bar = mat.mean(dim=0)
             else:
-                weight = n_c / total_patches
-                feat_mat = torch.tensor(
-                    df_pc.loc[:, [f"fea_{i}" for i in range(fea_dim)]].values,
-                    dtype=torch.float32
-                )
-                feat_c = feat_mat.mean(dim=0)
-            weight_log[c] = round(weight, 4)
-            feat_all.extend((weight * feat_c).tolist())
-
-        # 打印前 3 个患者的权重分布
-        if len(rows_out) < 3:
-            print(f"    [Debug] patient {pid} 的 w_ij: {weight_log}")
-
-        for i, val in enumerate(feat_all):
-            row[f"fea_{i}"] = val
-        rows_out.append(row)
-
-    return pd.DataFrame(rows_out)
+                x_bar = torch.zeros(fe_dim)
+            weighted = (w_ij * x_bar).tolist()
+            feat_vec.extend(weighted)
+        for i, v in enumerate(feat_vec):
+            row[f"fea_{i}"] = v
+        out_rows.append(row)
+    return pd.DataFrame(out_rows)
 
 # ---------------- aggregation per fold ----------------
 def aggregate_one_fold(fold, train_pids, valid_pids, test_pids):
-    print(f"\n========== 开始第 {fold} 折聚合 ==========")
-    splits = {"train": train_pids, "valid": valid_pids, "test": test_pids}
-
+    print(f"\n========== 开始第 {fold} 折聚合 (单折模式) ==========")
+    splits = {"train": train_pids,
+              "valid": valid_pids,
+              "test":  test_pids}
     for split_name, pids in splits.items():
         print(f"\n--- 处理 {split_name} 集合: 共 {len(pids)} 位患者 ---")
         rows = patch_df[patch_df["pid"].isin(pids)].copy()
@@ -147,28 +132,24 @@ def aggregate_one_fold(fold, train_pids, valid_pids, test_pids):
         patch_risk_df = rows.reset_index(drop=True).copy()
         patch_risk_df["risk"] = 0.0
 
+        # patch-level 推理
         with torch.no_grad():
             for c in tqdm(selected_cluster,
                           desc=f"[Fold{fold}-{split_name}] 簇推理",
                           leave=False,
                           ncols=80):
                 mpath = MODEL_DIR / f"convimgmodel_cluster{c}_fold{fold}.pth"
-                if not mpath.exists():          # 若该折无模型→回退 fold1
+                if not mpath.exists():
                     mpath = MODEL_DIR / f"convimgmodel_cluster{c}_fold1.pth"
                 if not mpath.exists():
                     print(f"[Warn] 模型文件不存在: {mpath}")
                     continue
 
-                # 加载模型
-                try:
-                    model = DeepConvSurv(get_features=True)
-                    model.load_state_dict(torch.load(mpath, map_location="cpu")["model"])
-                    model.eval()
-                except Exception as e:
-                    print(f"[Error] 加载模型 {mpath.name} 失败: {e}")
-                    continue
+                model = DeepConvSurv(get_features=True)
+                model.load_state_dict(torch.load(mpath,
+                                                 map_location="cpu")["model"])
+                model.eval()
 
-                # 取属于该簇的 patch
                 idxs = patch_feat_df.index[patch_feat_df["cluster"] == c].tolist()
                 if not idxs:
                     print(f"    cluster {c}: 无 patch，跳过")
@@ -176,61 +157,47 @@ def aggregate_one_fold(fold, train_pids, valid_pids, test_pids):
 
                 X, _ = make_patch_dataset(patch_feat_df.loc[idxs])
                 if X is None:
-                    print(f"    cluster {c}: X 张量为空，跳过")
+                    print(f"    cluster {c}: X 为空，跳过")
                     continue
 
-                # 推理
-                try:
-                    feat, risk = model(X)
-                except Exception as e:
-                    print(f"[Error] 模型推理失败 cluster {c}: {e}")
-                    continue
-
+                feat, risk = model(X)
                 feat_np = feat.cpu().numpy()
                 risk_np = risk.cpu().numpy()
                 D = feat_np.shape[1]
-                feat_cols = [f"fea_{i}" for i in range(D)]
-                for col in feat_cols:
-                    if col not in patch_feat_df.columns:
+                cols = [f"fea_{i}" for i in range(D)]
+                for col in cols:
+                    if col not in patch_feat_df:
                         patch_feat_df[col] = 0.0
-
-                patch_feat_df.loc[idxs, feat_cols] = feat_np
+                patch_feat_df.loc[idxs, cols] = feat_np
                 patch_risk_df.loc[idxs, "risk"] = risk_np
-                print(f"    cluster {c}: 推理完成, 特征维度={D}, patch 数={len(idxs)}")
+                print(f"    cluster {c}: 推理完成，patch 数={len(idxs)}")
 
         # patch → patient 加权
-        try:
-            # 用新实现替换老 patient_features；若想对比二者可切换
-            fea_dim_here = feat_np.shape[1]        # 由上一循环得到
-            patient_fea  = agg_weighted_features(patch_feat_df,
-                                                 selected_cluster,
-                                                 fea_dim_here)
-            patient_risk = agg_weighted_features(patch_risk_df,
-                                                 selected_cluster,
-                                                 fea_dim=1)
-            print(f"    [Info] 聚合完成: 每位患者特征维度 = "
-                  f"{len(selected_cluster)*fea_dim_here}")
-        except Exception as e:
-            print(f"[Error] 聚合 patient_features 失败: {e}")
-            return
+        fe_dim = D  # 从上面取出
+        patient_fea  = agg_weighted_features(patch_feat_df,
+                                             selected_cluster,
+                                             fe_dim)
+        patient_risk = agg_weighted_features(patch_risk_df,
+                                             selected_cluster,
+                                             fea_dim=1)
+        print(f"    [Info] 聚合完成: 患者级特征维度={len(selected_cluster)*fe_dim}")
 
+        # 保存 CSV
         out_fea = OUT_DIR / f"{split_name}_patient_features_fold{fold}.csv"
         out_rsk = OUT_DIR / f"{split_name}_patient_risks_fold{fold}.csv"
-        try:
-            patient_fea.to_csv(out_fea, index=False)
-            patient_risk.to_csv(out_rsk, index=False)
-            print(f"[Success] {split_name} 保存特征: {out_fea.name}, 风险: {out_rsk.name}")
-        except Exception as e:
-            print(f"[Error] 保存 CSV 失败: {e}")
+        patient_fea.to_csv(out_fea, index=False)
+        patient_risk.to_csv(out_rsk, index=False)
+        print(f"[Success] {split_name} 保存 → 特征:{out_fea.name}, 风险:{out_rsk.name}")
 
-# ---------------- LOPO‑7 Aggregation ----------------
+# ---------------- 单折执行 ----------------
 all_pids = patient_df["pid"].tolist()
-print(f"\n>>> LOPO-7 开始，共 {len(all_pids)} 折")
-for fold, test_pid in tqdm(list(enumerate(all_pids, start=1)),
-                           desc="LOPO-7 折数",
-                           ncols=80):
-    test_pids  = [test_pid]
-    train_pids = [pid for pid in all_pids if pid != test_pid]
-    random.shuffle(train_pids)
-    valid_pids = [train_pids.pop()]   # 单个患者做 valid
-    aggregate_one_fold(fold, train_pids, valid_pids, test_pids)
+# 固定第一位为 test，第二位为 valid，其余为 train
+test_pids  = [all_pids[0]]
+valid_pids = [all_pids[1]]
+train_pids = all_pids[2:]
+print(f"\n>>> 单折配置信息:")
+print(f"    test  患者: {test_pids}")
+print(f"    valid 患者: {valid_pids}")
+print(f"    train 患者: {train_pids}")
+
+aggregate_one_fold(1, train_pids, valid_pids, test_pids)
