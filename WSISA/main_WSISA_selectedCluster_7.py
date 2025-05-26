@@ -95,7 +95,10 @@ def aggregate_one_fold(fold, train_pids, valid_pids, test_pids):
         patch_risk_df["risk"] = 0.0
 
         with torch.no_grad():
-            for c in selected_cluster:
+            for c in tqdm(selected_cluster,
+                          desc=f"[Fold{fold}-{split_name}] 簇推理",
+                          leave=False,
+                          ncols=80):
                 mpath = MODEL_DIR / f"convimgmodel_cluster{c}_fold{fold}.pth"
                 if not mpath.exists():          # 若该折无模型→回退 fold1
                     mpath = MODEL_DIR / f"convimgmodel_cluster{c}_fold1.pth"
@@ -161,8 +164,10 @@ def aggregate_one_fold(fold, train_pids, valid_pids, test_pids):
 
 # ---------------- LOPO‑7 Aggregation ----------------
 all_pids = patient_df["pid"].tolist()
-print(f"\n>>> LOPO‑7 开始，共 {len(all_pids)} 折")
-for fold, test_pid in enumerate(all_pids, start=1):
+print(f"\n>>> LOPO-7 开始，共 {len(all_pids)} 折")
+for fold, test_pid in tqdm(list(enumerate(all_pids, start=1)),
+                           desc="LOPO-7 折数",
+                           ncols=80):
     test_pids  = [test_pid]
     train_pids = [pid for pid in all_pids if pid != test_pid]
     random.shuffle(train_pids)
