@@ -20,6 +20,9 @@ import torchvision.transforms as T
 from networks import DeepConvSurv
 from utils.WSISA_utils import patient_features   # 已在 utils 里修过 import
 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 
 # ---------------- paths & config ----------------
 ROOT        = Path(__file__).resolve().parent
