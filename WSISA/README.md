@@ -24,13 +24,21 @@ WSISA/
 │   │   ├── WSI_002
 │   │   │   ├── WSI_002.svs
 │   │   └── ...
-│   ├── patches/                  # 提取的图像块
+│   ├── patches_7/                  # 提取的图像块
 │   │   ├── WSI_001/
 │   │   │   ├── patch_0001.png
 │   │   │   └── patch_0002.png
 │   │   └── WSI_002/
 │   │       ├── patch_0001.png
 │   │       └── patch_0002.png
+│   └── patches_40/                 # 提取的图像块
+│       ├── WSI_001/
+│       │   ├── patch_0001.png
+│       │   └── patch_0002.png
+│       ├── WSI_002/
+│       │   ├── patch_0001.png
+│       │   └── patch_0002.png
+│       └── ...
 │   └── patients.csv              # 病人相关标签信息
 ├── cluster_result/               # 聚类结果
 │   ├── patches_1000_cls10.csv     # 聚类结果文件
@@ -196,12 +204,15 @@ data/patches/TCGA-S5-AA26-01Z-00-DX1.10D28D0C-D537-485E-A371-E3C60ED66FE7/patch_
 #### 3.2.2 对原始代码进行改造 `cluster_select_deepconvsurv_pytorch.py`
 我们对原始代码进行了改造，主要是为了适应我们只有 7 个患者的情况。原始代码的五折交叉验证在这种情况下会报错。
 
+输出如下：
+```bash
+>>> C_THRESH = 0.5
+>>> 满足阈值的簇： [0, 1, 3, 4, 6, 7, 9]
+[Saved] selected clusters → /root/2025_WSISA/WSISA/log/selected_clusters.txt
+```
 
+![](media/2025-05-26-16-16-29.png)
 
-#### 3.2.3 自定义网络 `cnn_survival.py`, `cluster_select_cnnsurv.py`
-由于我们只使用7张WSI文件，故只有7个病人，不能进行五折交叉验证，想通过其他方法跑通实验。
-
-我们选取的解决方案是：对每位患者执行“留一法”——在剩余患者数据上训练 CNN 生存模型，然后在该患者的所有 Patch 上预测风险，最后将所有预测结果聚合计算整体的 C-index。
 
 输出如下：
 ```bash
