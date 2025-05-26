@@ -11,6 +11,18 @@ import torch.nn.functional as F
 from lifelines.utils import concordance_index
 
 
+def c_index_torch(risk_pred, t, e):
+    """
+    将 torch.Tensor 风险分数 / 生存时间 / 状态 转成 numpy，然后调用 lifelines 计算 C-index
+    """
+    # 把 (N,1) → (N,)
+    risk = risk_pred.detach().cpu().view(-1).numpy()
+    t    = t.detach().cpu().numpy()
+    e    = e.detach().cpu().numpy()
+    # lifelines 的 concordance_index 接受 (预测值, 时间, 事件)
+    return concordance_index(-risk, t, e)
+
+
 # ----------- 网络本体 -----------
 class DeepConvSurv(nn.Module):
     """
