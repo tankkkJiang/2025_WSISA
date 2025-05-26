@@ -20,6 +20,7 @@ import torchvision.transforms as T
 from networks import DeepConvSurv
 from utils.WSISA_utils import patient_features   # 已在 utils 里修过 import
 
+
 # ---------------- paths & config ----------------
 ROOT        = Path(__file__).resolve().parent
 PATCH_CSV   = ROOT / "cluster_result" / "patches_1000_cls10_expanded.csv"   # ← 用扩展后的 CSV
