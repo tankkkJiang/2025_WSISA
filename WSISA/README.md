@@ -92,7 +92,17 @@ pip install faiss-cpu
 
 1. **初始化**：遍历 data/patches 下所有子文件夹（每个子文件夹对应一个 WSI），将所有子文件夹里 .png 补丁文件一次性收集到一个列表里；
 2. **对这个列表中的所有补丁一并做 PCA 降维和 K-Means 聚类**：将这些补丁图像patches缩放、展平成向量后，用增量PCA将维度从（50×50×3≈7500）降到 n_comp（这里固定为 50）。再用 KMeans 将所有补丁分成 num_clusters 个簇；
-3. **输出**：最终会在 cluster_result/ 目录里生成一个名为命名为 `patches_1000_cls10.csv`，实际是包含了每个补丁的路径、WSI ID、患者 ID 和聚类簇 ID。
+3. **输出**：最终会在 cluster_result/ 目录里生成一个名为命名为 `patches_1000_cls10.csv`，实际是包含了每个补丁的路径、WSI ID、患者 ID 和聚类簇 
+
+#### 2.1 PCA降维
+
+##### 增量 PCA 的训练
+一个 batch 就是最多 100 个 patch，更新它的主成分。在数据量很大、一次性载入内存会溢出的情况下，分小批（batch）读入数据，逐步更新对主成分（eigenvectors）的估计。
+
+##### PCA 批量转换
+这里一个 batch 是 50 张 patch，它们先被读入、展平，然后一次性做 pca.transform(...)，把降维后的结果写进 points 数组中。
+
+#### 2.2 K-Means聚类和输出
 
 输出命名为：注意每个子文件夹（每 个 WSI）随机抽样最多 1000 张补丁时所用的那个阈值为 `num_file`，聚类数为 `num_clusters`。
 ```bash
