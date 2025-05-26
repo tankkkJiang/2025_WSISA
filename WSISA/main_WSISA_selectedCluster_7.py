@@ -3,59 +3,58 @@
 """
 WSISA/main_WSISA_selectedCluster_7.py
 
-Step-4 (Aggregation):
-  - 读取已选簇的 patch-level 模型
+Step‑4 (Aggregation):
+  - 读取已选簇的 patch‑level 模型
   - 将 patch → patient (加权平均)
   - 导出 train / valid / test 三集合的患者级特征 & 风险
 """
-import os
 import random
 from pathlib import Path
-from itertools import combinations
 
-import numpy as np
 import pandas as pd
 from PIL import Image
 from tqdm import tqdm
-
 import torch
 import torchvision.transforms as T
 
 from networks import DeepConvSurv
-from utils.WSISA_utils import patient_features
+from utils.WSISA_utils import patient_features   # 已在 utils 里修过 import
 
 # ---------------- paths & config ----------------
 ROOT        = Path(__file__).resolve().parent
-PATCH_CSV   = ROOT / "cluster_result" / "patches_1000_cls10.csv"
-PATIENT_CSV = ROOT / "data"   / "patients.csv"
+PATCH_CSV   = ROOT / "cluster_result" / "patches_1000_cls10_expanded.csv"   # ← 用扩展后的 CSV
 MODEL_DIR   = ROOT / "log"    / "wsisa_patch10" / "convimgmodel"
 SEL_FILE    = ROOT / "log"    / "selected_clusters.txt"
 OUT_DIR     = ROOT / "results"
 OUT_DIR.mkdir(exist_ok=True, parents=True)
 
 print("正在打印配置参数：")
-print(f"  PATCH_CSV  路径: {PATCH_CSV}")
-print(f"  PATIENT_CSV 路径: {PATIENT_CSV}")
-print(f"  MODEL_DIR   路径: {MODEL_DIR}")
-print(f"  SEL_FILE    路径: {SEL_FILE}")
-print(f"  OUT_DIR     路径: {OUT_DIR}")
+print(f"  PATCH_CSV    路径: {PATCH_CSV}")
+print(f"  MODEL_DIR    路径: {MODEL_DIR}")
+print(f"  SEL_FILE     路径: {SEL_FILE}")
+print(f"  OUT_DIR      路径: {OUT_DIR}")
 
+# ---------------- 读取 CSV ----------------
 assert SEL_FILE.exists(), "错误：请先运行 cluster_select_deepconvsurv.py 完成选簇"
 selected_cluster = [int(x) for x in SEL_FILE.read_text().split(",") if x.strip().isdigit()]
 print(f">>> 已选簇 (共 {len(selected_cluster)} 个): {selected_cluster}")
 
 try:
-    patch_df   = pd.read_csv(PATCH_CSV)
+    patch_df = pd.read_csv(PATCH_CSV)
     print(f">>> 载入 patch CSV，行数: {len(patch_df)}")
 except Exception as e:
     raise RuntimeError(f"错误：无法读取 {PATCH_CSV}: {e}")
 
-try:
-    patient_df = pd.read_csv(PATIENT_CSV)
-    print(f">>> 载入 patient CSV，行数: {len(patient_df)}")
-except Exception as e:
-    raise RuntimeError(f"错误：无法读取 {PATIENT_CSV}: {e}")
+# 必要字段检测
+for col in ["pid", "surv", "status", "patch_path", "cluster"]:
+    if col not in patch_df.columns:
+        raise KeyError(f"CSV 缺少必须列: '{col}'")
 
+# 从 patch_df 里抽取患者级信息
+patient_df = patch_df[["pid", "surv", "status"]].drop_duplicates()
+print(f">>> 患者总数: {len(patient_df)}")
+
+# ---------------- 图像预处理 ----------------
 MEAN = [0.6964, 0.5905, 0.6692]
 STD  = [0.2559, 0.2943, 0.2462]
 print(f">>> 图像归一化参数：MEAN={MEAN}, STD={STD}")
@@ -66,7 +65,7 @@ TRANSF = T.Compose([
 
 # ------------- helper -------------
 def make_patch_dataset(rows):
-    """返回 (Tensor[N,C,H,W], list_of_pids)"""
+    """返回 (Tensor[N,C,H,W], list_of_pid)；若 rows 为空返回 (None,[])"""
     xs, pids = [], []
     for _, r in rows.iterrows():
         try:
@@ -98,32 +97,33 @@ def aggregate_one_fold(fold, train_pids, valid_pids, test_pids):
         with torch.no_grad():
             for c in selected_cluster:
                 mpath = MODEL_DIR / f"convimgmodel_cluster{c}_fold{fold}.pth"
-                if not mpath.exists():
-                    # 回退到 fold1
+                if not mpath.exists():          # 若该折无模型→回退 fold1
                     mpath = MODEL_DIR / f"convimgmodel_cluster{c}_fold1.pth"
                 if not mpath.exists():
                     print(f"[Warn] 模型文件不存在: {mpath}")
                     continue
+
+                # 加载模型
                 try:
                     model = DeepConvSurv(get_features=True)
-                    ckpt  = torch.load(mpath, map_location="cpu")
-                    model.load_state_dict(ckpt["model"])
+                    model.load_state_dict(torch.load(mpath, map_location="cpu")["model"])
                     model.eval()
                 except Exception as e:
-                    print(f"[Error] 加载模型 cluster {c}, fold {fold} 失败: {e}")
+                    print(f"[Error] 加载模型 {mpath.name} 失败: {e}")
                     continue
 
+                # 取属于该簇的 patch
                 idxs = patch_feat_df.index[patch_feat_df["cluster"] == c].tolist()
                 if not idxs:
                     print(f"    cluster {c}: 无 patch，跳过")
                     continue
 
-                sub_df = patch_feat_df.loc[idxs]
-                X, _  = make_patch_dataset(sub_df)
+                X, _ = make_patch_dataset(patch_feat_df.loc[idxs])
                 if X is None:
                     print(f"    cluster {c}: X 张量为空，跳过")
                     continue
 
+                # 推理
                 try:
                     feat, risk = model(X)
                 except Exception as e:
@@ -142,13 +142,13 @@ def aggregate_one_fold(fold, train_pids, valid_pids, test_pids):
                 patch_risk_df.loc[idxs, "risk"] = risk_np
                 print(f"    cluster {c}: 推理完成, 特征维度={D}, patch 数={len(idxs)}")
 
-        # patch -> patient 加权
+        # patch → patient 加权
         try:
             patient_fea  = patient_features(patch_feat_df, selected_cluster)
             patient_risk = patient_features(patch_risk_df, selected_cluster, fea_dim=1)
         except Exception as e:
             print(f"[Error] 聚合 patient_features 失败: {e}")
-            continue
+            return
 
         out_fea = OUT_DIR / f"{split_name}_patient_features_fold{fold}.csv"
         out_rsk = OUT_DIR / f"{split_name}_patient_risks_fold{fold}.csv"
@@ -159,11 +159,12 @@ def aggregate_one_fold(fold, train_pids, valid_pids, test_pids):
         except Exception as e:
             print(f"[Error] 保存 CSV 失败: {e}")
 
-# ---------------- LOPO-7 Aggregation ----------------
+# ---------------- LOPO‑7 Aggregation ----------------
 all_pids = patient_df["pid"].tolist()
+print(f"\n>>> LOPO‑7 开始，共 {len(all_pids)} 折")
 for fold, test_pid in enumerate(all_pids, start=1):
     test_pids  = [test_pid]
     train_pids = [pid for pid in all_pids if pid != test_pid]
     random.shuffle(train_pids)
-    valid_pids = [train_pids.pop()]
+    valid_pids = [train_pids.pop()]   # 单个患者做 valid
     aggregate_one_fold(fold, train_pids, valid_pids, test_pids)
