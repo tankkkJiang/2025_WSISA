@@ -168,7 +168,7 @@ data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_0490.jpg, TCGA-BL-A3JM-01Z-00-DX1.
 对`patients.csv`处理如下：只保留了 barcode（样本条码）、vital_status（生还／死亡状态）、days_to_death（若死亡，距死亡的天数）和 days_to_last_follow_up（若存活，距最后一次随访的天数）这四列。
 1. 以 barcode 按 - 分割，取前三段（例如 TCGA-BL-A3JM-... → TCGA-BL-A3JM），作为患者级别的 pid。
 2. 将文本标签映射为数值：死亡（Dead）->1、存活（Alive）->0。
-3. 计算生存时间则先把天数列转换为数值型，如果患者已亡（status==1），surv 取 days_to_death；否则取 days_to_last_follow_up。
+3. 计算生存时间则先把天数列转换为数值型，如果患者已亡（status==1），surv 取 days_to_death，从入组到死亡的天数；否则取 days_to_last_follow_up，到最后一次随访的天数/观测到的最大存活时间。
 
 
 输出文件 `cluster_result/patches_1000_cls10_expanded.csv` 示例：
@@ -242,15 +242,7 @@ data/patches/TCGA-S5-AA26-01Z-00-DX1.10D28D0C-D537-485E-A371-E3C60ED66FE7/patch_
 
 
 输出如下：
-```bash
-(base) root@gz-ins-678868173725701:~/WSISA# python cluster_select_cnnsurv.py
-===== 开始 LOOCV 聚合 C-index 计算 =====
-
-[LOOCV] 当前留出患者: TCGA-SY-A9G0
-
-[TRAIN] 开始训练，训练集患者数量：6，Patch 数量：25644
-[TRAIN] Epoch 1/20 完成，平均 Loss = 63.5706
-```
+![](media/2025-05-26-19-55-51.png)
 
 ### 3.3 生存预测 (Survival Prediction)
 
@@ -284,8 +276,7 @@ $x_{ij}
 
 #### 3.3.4 输出结果
 打印内容如下：
-
-![](media/2025-05-26-17-08-16.png)
+![](media/2025-05-26-17-16-02.png)
 
 供下游生存模型（LASSO-Cox、RSF 等）直接读取：
 * 患者级特征：`{split}_patient_features_fold{fold}.csv`。这些向量就是我们后面用来做生存分析的输入特征。例如，可以把它们丢给 LASSO-Cox、随机森林 Cox、BoostCI、MTLSA 等模型，去学习哪几个聚类（簇）中提取到的形态信息最能预测生存。
