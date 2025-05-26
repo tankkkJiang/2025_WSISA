@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-WSISA/cluster_select_deepconvsurv.py  (简化版，仅为跑通 7 位病人数据)
+WSISA/cluster_select_deepconvsurv.py   (简化版，仅 7 位病人一次性跑通)
 
-- 不做 LOPO，只跑 1 折
-- 7 位病人全部进训练集，再随机选 1 位 status=1 的人作验证
-- 捕获 lifelines ZeroDivisionError，避免 "No admissable pairs" 崩溃
+* 读取 cluster_result/patches_1000_cls10_expanded.csv
+* 按患者 status 分层拆成 3(train)+2(valid)+2(test) 位病人
+* 对每个簇分别训练 DeepConvSurv，打印并保存模型
+* 计算 valid/test C-index；遇到 "No admissable pairs" 捕获并置 0
+* 输出选簇列表(log/selected_clusters.txt) — C-index ≥ 0.5
 """
 import random, warnings
 from pathlib import Path
@@ -16,127 +18,136 @@ from PIL import Image
 import torch, torch.optim as optim
 import torchvision.transforms as T
 from tqdm import tqdm
+from lifelines.utils import concordance_index
 
-from networks import DeepConvSurv, NegativeLogLikelihood, c_index_torch
+from networks import DeepConvSurv, NegativeLogLikelihood
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# ----------------- 常量与路径 -----------------
+# ------------ 常量 ------------
 SEED = 1
 random.seed(SEED)
 torch.manual_seed(SEED)
 
 ROOT        = Path(__file__).resolve().parent
-EXPAND_CSV  = ROOT / "cluster_result" / "patches_1000_cls10_expanded.csv"
+CSV_PATH    = ROOT / "cluster_result" / "patches_1000_cls10_expanded.csv"
 MODEL_DIR   = ROOT / "log" / "wsisa_patch10" / "convimgmodel"
 SEL_FILE    = ROOT / "log" / "selected_clusters.txt"
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
-EPOCHS     = 3          # 只跑几轮即可
-BATCH_SIZE = 64
-LR         = 1e-4
-C_THRESH   = 0.0        # 只想有输出，阈值随便
-DEVICE     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+EPOCHS, BATCH, LR = 3, 64, 1e-4          # 为了演示, epoch 减到 3
+C_THRESH          = 0.50
+DEVICE            = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-MEAN, STD = [0.7, 0.6, 0.67], [0.26, 0.29, 0.25]
-TRANSF = T.Compose([T.ToTensor(), T.Normalize(MEAN, STD)])
+MEAN = [0.6964, 0.5905, 0.6692]
+STD  = [0.2559, 0.2943, 0.2462]
+TRANS = T.Compose([T.ToTensor(), T.Normalize(MEAN, STD)])
 
-# ----------------- 读取数据 -----------------
-df = pd.read_csv(EXPAND_CSV)
-print(f"[INFO] 总 patch 数: {len(df)}")
-print("[INFO] 每簇 patch 数:")
+# ------------ 数据加载 ------------
+df = pd.read_csv(CSV_PATH)
+print(f"\n>>> 共有 patch {len(df)} 条, 患者 {df['pid'].nunique()} 位")
+print(">>> cluster 分布:")
 for c, g in df.groupby("cluster"):
-    print(f"  cluster {c}: {len(g)}")
+    print(f"  cluster {c:2d}: {len(g)} patches")
 
-clusters = sorted(df["cluster"].unique())
-fold_cidx = {c: [] for c in clusters}   # 只有一折，仍按 list 存
+# ------------ 病人分层拆分 ------------
+patients = df[["pid", "status"]].drop_duplicates()
+dead  = patients[patients.status == 1]["pid"].tolist()
+alive = patients[patients.status == 0]["pid"].tolist()
 
-# ------------- 划分训练 / 验证 / 测试 -------------
-all_pids = df["pid"].unique().tolist()
+random.shuffle(dead);  random.shuffle(alive)
+# 简单策略: 先确保每组至少 1 dead, 其余随机补足
+train_p = [dead.pop()] if dead else []
+valid_p = [dead.pop()] if dead else []
+test_p  = [dead.pop()] if dead else []
 
-# 挑 1 个 status=1 的病人做验证；如果没有，就随便选
-event_pids = df[df["status"] == 1]["pid"].unique().tolist()
-valid_pid  = random.choice(event_pids) if event_pids else random.choice(all_pids)
-train_pids = [p for p in all_pids if p != valid_pid]
-test_pids  = all_pids                   # 这里测试集就等于全体，目的是打印
+# 补充剩余名额 (3-2-2)
+def fill(target, n):
+    while len(target) < n and alive:
+        target.append(alive.pop())
+    while len(target) < n and dead:
+        target.append(dead.pop())
 
-print("\n========== 单折划分 ==========")
-print("Train pids :", train_pids)
-print("Valid pid  :", valid_pid)
-print("Test  pids :", test_pids)
+fill(train_p, 3); fill(valid_p, 2); fill(test_p, 2)
+# 若还没凑够 (数据非常偏)，就随便塞
+remain = dead + alive
+random.shuffle(remain)
+fill(train_p, 3); fill(valid_p, 2); fill(test_p, 2)
+
+print("\n>>> 病人划分:")
+print("  train:", train_p)
+print("  valid:", valid_p)
+print("  test :", test_p)
 
 def idx_of(pids):
-    return df.index[df["pid"].isin(pids)].tolist()
+    return df.index[df.pid.isin(pids)].tolist()
 
-train_idx = idx_of(train_pids)
-valid_idx = idx_of([valid_pid])
-test_idx  = idx_of(test_pids)
+train_idx, valid_idx, test_idx = map(idx_of, (train_p, valid_p, test_p))
+clusters = sorted(df.cluster.unique())
+fold_cidx = {c: [] for c in clusters}
 
+# ------------ utils ------------
 def make_dataset(rows):
     xs, ts, es = [], [], []
     for _, r in rows.iterrows():
-        xs.append(TRANSF(Image.open(ROOT / r["patch_path"])))
-        ts.append(float(r["surv"]))
-        es.append(float(r["status"]))
+        xs.append(TRANS(Image.open(ROOT / r.patch_path)))
+        ts.append(float(r.surv)); es.append(float(r.status))
     return (
         torch.stack(xs),
         torch.tensor(ts, dtype=torch.float32),
         torch.tensor(es, dtype=torch.float32),
     )
 
-# ----------------- 训练每个簇 -----------------
+def ci_torch(risk, t, e):
+    try:
+        return concordance_index(-risk.detach().cpu().view(-1).numpy(),
+                                 t.detach().cpu().numpy(),
+                                 e.detach().cpu().numpy())
+    except ZeroDivisionError:
+        return 0.0
+
+# ------------ 逐簇训练 ------------
+crit = NegativeLogLikelihood()
 for c in tqdm(clusters, desc="train clusters"):
     tr = df.loc[train_idx].query("cluster == @c")
     va = df.loc[valid_idx].query("cluster == @c")
-    te = df.loc[test_idx ].query("cluster == @c")
+    te = df.loc[test_idx].query("cluster == @c")
 
-    if len(tr) < 5:                     # 太少就跳过
+    if len(tr) < 5:             # demo, 样本太少直接跳
         print(f"[Skip] cluster {c} 训练样本 <5")
         fold_cidx[c].append(0.0)
         continue
 
-    Xtr, Ttr, Etr = make_dataset(tr)
-    Xva, Tva, Eva = make_dataset(va)
-    Xte, Tte, Ete = make_dataset(te)
+    Xtr,Ttr,Etr = make_dataset(tr)
+    Xva,Tva,Eva = make_dataset(va)
+    Xte,Tte,Ete = make_dataset(te)
 
     model = DeepConvSurv(get_features=False).to(DEVICE)
-    crit  = NegativeLogLikelihood()
     opt   = optim.Adam(model.parameters(), lr=LR)
 
-    for ep in range(1, EPOCHS + 1):
+    best_vc = -1
+    for ep in range(1, EPOCHS+1):
         model.train()
         perm = torch.randperm(Xtr.size(0))
-        for i in range(0, len(perm), BATCH_SIZE):
-            idx = perm[i : i + BATCH_SIZE]
-            loss = crit(model(Xtr[idx].to(DEVICE)),
-                        Ttr[idx].to(DEVICE),
-                        Etr[idx].to(DEVICE))
+        for i in range(0, len(perm), BATCH):
+            idx = perm[i:i+BATCH]
+            x = Xtr[idx].to(DEVICE); t=Ttr[idx].to(DEVICE); e=Etr[idx].to(DEVICE)
+            loss = crit(model(x), t, e)
             opt.zero_grad(); loss.backward(); opt.step()
 
-    # --------- 计算验证 / 测试 C-index ---------
-    model.eval()
-    with torch.no_grad():
-        try:
-            vc = c_index_torch(model(Xva.to(DEVICE)), Tva, Eva)
-        except ZeroDivisionError:
-            vc = 0.0
-            print(f"[Warn] cluster {c}: 验证集无可比较对，vc=0")
-        try:
-            tc = c_index_torch(model(Xte.to(DEVICE)), Tte, Ete)
-        except ZeroDivisionError:
-            tc = 0.0
-            print(f"[Warn] cluster {c}: 测试集无可比较对，tc=0")
+        model.eval(); vc = ci_torch(model(Xva.to(DEVICE)), Tva, Eva)
+        print(f"cluster {c}  epoch {ep}/{EPOCHS}  val‑C={vc:.3f}")
+        if vc > best_vc:
+            best_vc = vc
+            torch.save({"model": model.state_dict()},
+                       MODEL_DIR / f"convimgmodel_cluster{c}.pth")
 
+    model.eval(); tc = ci_torch(model(Xte.to(DEVICE)), Tte, Ete)
     fold_cidx[c].append(tc)
-    print(f"cluster {c}: valid C={vc:.3f}, test C={tc:.3f}")
+    print(f"[Done] cluster {c}: best‑val C={best_vc:.3f}, test C={tc:.3f}")
 
-    torch.save({"model": model.state_dict()},
-               MODEL_DIR / f"convimgmodel_cluster{c}_fold1.pth")
-
-# ----------------- 选簇并保存 -----------------
-selected = [c for c, scores in fold_cidx.items()
-            if np.mean(scores) >= C_THRESH]
-print("\n>>> 满足阈值的簇列表：", selected)
-with open(SEL_FILE, "w") as f:
-    f.write(",".join(map(str, selected)))
-print(f"[Saved] selected clusters → {SEL_FILE}")
+# ------------ 选簇 ------------
+selected = [c for c, v in fold_cidx.items() if np.mean(v) >= C_THRESH]
+print("\n>>> 满足 C-index≥%.2f 的簇: %s" % (C_THRESH, selected))
+SEL_FILE.write_text(",".join(map(str, selected)))
+print(f"[Saved] 选簇列表 → {SEL_FILE}")
