@@ -8,15 +8,21 @@ WSISA/
 ├── pca_cluster_img.py             # 第一步：对所有图像块进行 PCA + 聚类
 ├── WSISA_dataloader.py            # 数据加载器，供后续训练与推理使用
 ├── WSISA_utils.py                 # 公用工具函数（如图像预处理、度量计算等）
-├── networks.py                    # 定义网络结构（DeepConvSurv/PyTorch 版本）
-├── main_WSISA_selectedCluster.py  # 第三步：集成已选簇进行特征提取与生存模型训练
 ├── expand_cluster_labels.py
-├── deep_networks.py                 # DeepConvSurv 网络定义
-├── cluster_select_deepconvsurv_pytorch.py   # 深度模型训练/验证
+├── networks.py
+├── cluster_select_deepconvsurv_7.py   # 深度模型训练/验证
+├── main_WSISA_selectedCluster_7.py  # 第三步：集成已选簇进行特征提取与生存模型训练，针对7个患者的情况
+├── main_WSISA_selectedCluster.py  # 第三步：集成已选簇进行特征提取与生存模型训练
 ├── data/
-│   ├── WSI/                      # 原始 WSI 图像文件
+│   ├── WSI_7/                      # 原始 WSI 图像文件
 │   │   ├── WSI_001.svs
 │   │   ├── WSI_002.svs
+│   │   └── ...
+│   ├── WSI_40/                        # 原始 WSI 图像文件
+│   │   ├── WSI_001
+│   │   │   ├── WSI_001.svs
+│   │   ├── WSI_002
+│   │   │   ├── WSI_002.svs
 │   │   └── ...
 │   ├── patches/                  # 提取的图像块
 │   │   ├── WSI_001/

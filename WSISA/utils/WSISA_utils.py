@@ -1,6 +1,5 @@
 """
 Contain Codes for WSISA
-
 """
 import pandas as pd
 from time import time
@@ -8,7 +7,7 @@ import sklearn
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 import torch
-from model import DeepConvSurv
+from networks import DeepConvSurv
 import numpy as np
 import os
 import cv2

@@ -99,6 +99,9 @@ def aggregate_one_fold(fold, train_pids, valid_pids, test_pids):
             for c in selected_cluster:
                 mpath = MODEL_DIR / f"convimgmodel_cluster{c}_fold{fold}.pth"
                 if not mpath.exists():
+                    # 回退到 fold1
+                    mpath = MODEL_DIR / f"convimgmodel_cluster{c}_fold1.pth"
+                if not mpath.exists():
                     print(f"[Warn] 模型文件不存在: {mpath}")
                     continue
                 try:
