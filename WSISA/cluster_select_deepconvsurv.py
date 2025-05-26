@@ -109,12 +109,16 @@ for c in tqdm(clusters, desc="Clusters"):
 
     # 计算 C-index（train==test）
     model.eval()
+    all_scores = []
     with torch.no_grad():
-        try:
-            c_idx = c_index_torch(model(X.to(DEVICE)), Tsurv, Estatus)
-        except ZeroDivisionError:
-            c_idx = 0.0
-            print(f"[Warn] cluster {c}: 无可比较样本对，C-index 置 0")
+        torch.cuda.empty_cache()  # 可选：先清理下未用显存
+        for i in range(0, X.size(0), BATCH_SIZE):
+            xb = X[i: i + BATCH_SIZE].to(DEVICE)
+            scores = model(xb).cpu()  # 推理后马上搬回 CPU
+            all_scores.append(scores)
+        all_scores = torch.cat(all_scores, dim=0)
+        # 如果 c_index_torch 支持 CPU 张量就直接用 CPU，否则再 .to(DEVICE)
+        c_idx = c_index_torch(all_scores, Tsurv, Estatus)
     fold_cidx[c].append(c_idx)
 
     print(f"Cluster {c:2d}  训练完成  →  C-index={c_idx:.4f}")
