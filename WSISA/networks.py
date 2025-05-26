@@ -1,74 +1,70 @@
-# WSISA/networks.py
+#!/usr/bin/env python
+# -*- coding: utf‑8 -*-
+"""
+WSISA/networks.py
 
+纯 PyTorch 版 DeepConvSurv 及其损失, 兼容“提特征 + 出风险分数”两种模式
+"""
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from lifelines.utils import concordance_index
 
-class Regularization(object):
-    def __init__(self, order, weight_decay):
-        ''' The initialization of Regularization class
-        :param order: (int) norm order number
-        :param weight_decay: (float) weight decay rate
-        '''
-        super(Regularization, self).__init__()
-        self.order = order
-        self.weight_decay = weight_decay
 
-    def __call__(self, model):
-        ''' Performs calculates regularization(self.order) loss for model.
-        :param model: (torch.nn.Module object)
-        :return reg_loss: (torch.Tensor) the regularization(self.order) loss
-        '''
-        reg_loss = 0
-        for name, w in model.named_parameters():
-            if 'weight' in name:
-                reg_loss = reg_loss + torch.norm(w, p=self.order)
-        reg_loss = self.weight_decay * reg_loss
-        return reg_loss
-
+# ----------- 网络本体 -----------
 class DeepConvSurv(nn.Module):
-    ''' The module class performs building network according to config'''
-    def __init__(self, get_features=False):
-        super(DeepConvSurv, self).__init__()
+    """
+    - 若构造时 get_features=True: forward 返回 (feat_vec, risk)
+    - 否则仅返回 risk
+    """
+    def __init__(self, in_channels: int = 3,
+                 get_features: bool = False) -> None:
+        super().__init__()
+        self.get_features = get_features
 
-        self.get_fea = get_features
+        self.features = nn.Sequential(
+            nn.Conv2d(in_channels, 32, kernel_size=7, stride=3), nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 32, kernel_size=5, stride=2), nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, stride=2), nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.AdaptiveAvgPool2d(1),      # → (N,32,1,1)
+            nn.Flatten()                  # → (N,32)
+        )
+        self.fc = nn.Linear(32, 1)        # risk (= log‑hazard)
 
-        self.conv1 = nn.Conv2d(3, 32, kernel_size=5, stride=2, bias=False)
-        self.conv2 = nn.Conv2d(32, 32, kernel_size=3, stride=2, bias=False)
-        self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(32, 1)
-
+    # ----------- 前向 -----------
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.relu(x)
-        x = self.conv2(x)
-        x = self.relu(x)
-        x = self.maxpool(x)
-        x = self.avgpool(x)
-        feat = torch.flatten(x,1)
-        output = self.fc(feat)
-        if self.get_fea:
-            return feat, output
-        else:
-            return output
-        
+        feat = self.features(x)
+        risk = self.fc(feat)
+        if self.get_features:
+            return feat, risk
+        return risk
 
+
+# ----------- Cox 部分似然负对数损失 -----------
 class NegativeLogLikelihood(nn.Module):
-    def __init__(self):
-        super(NegativeLogLikelihood, self).__init__()
-        self.L2_reg = 0.0
-        self.reg = Regularization(order=2, weight_decay=self.L2_reg)
+    """
+    输入
+    ----
+    risk_pred : (N,1) tensor, 越大→风险越高 (log‑hazard)
+    t         : (N,)  存活时间
+    e         : (N,)  结局; 1=死亡 / 0=删失
+    """
+    def forward(self, risk_pred, t, e):
+        # 按 t 降序
+        order = torch.argsort(t, descending=True)
+        eta   = risk_pred.view(-1)[order]
+        e     = e[order]
+        # 累积求和的 log(exp) = logcumexp
+        log_cum_hazard = torch.logcumsumexp(eta, dim=0)
+        loss = -torch.sum((eta - log_cum_hazard) * e) / (e.sum() + 1e-8)
+        return loss
 
-    def forward(self, risk_pred, y, e, model):
-        mask = torch.ones(y.shape[0], y.shape[0]).to(y.device)
-        mask[(y.T - y) > 0] = 0
-        log_loss = torch.exp(risk_pred) * mask
-        log_loss = torch.sum(log_loss, dim=0) / torch.sum(mask, dim=0)
-        log_loss = torch.log(log_loss).reshape(-1, 1)
-        # neg_log_loss = -torch.sum((risk_pred-log_loss) * e) / torch.sum(e)
-        neg_log_loss = -torch.sum((risk_pred-log_loss) * e)
-        l2_loss = self.reg(model)
-        # import pdb
-        # pdb.set_trace()
-        return neg_log_loss + l2_loss
+
+# ----------- 计算 C‑index（torch→numpy）-----------
+def c_index_torch(risk, t, e):
+    risk = risk.detach().cpu().view(-1).numpy()
+    t    = t.detach().cpu().numpy()
+    e    = e.detach().cpu().numpy()
+    return concordance_index(-risk, t, e)

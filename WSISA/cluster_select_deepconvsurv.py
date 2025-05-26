@@ -1,166 +1,171 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-WSISA/clyster_select_deepconvsurv.py
+WSISA/cluster_select_deepconvsurv_pytorch.py
 
-Model‑selection script for DeepConvSurv under the **new WSISA repo layout**.
-The training / validation logic is **unchanged** – only paths, default names
-and a few hard‑coded placeholders were updated so that the script runs
-out‑of‑the‑box with the following structure:
-
-WSISA/
-├── data/patches/…
-├── data/patients.csv
-├── cluster_result/patches_1000_cls10_expanded.csv
-└── …
+Step‑3  : 训练每个簇的 DeepConvSurv, 计算 C‑index, 选出“判别力强”的簇
+使用 Leave‑One‑Patient‑Out(7 折) 而非原 5‑fold
+权重保存至 log/wsisa_patch10/convimgmodel/convimgmodel_cluster{c}_fold{f}.pth
+选簇列表写入 log/selected_clusters.txt (逗号分隔)
 """
-import os
-# 禁用 BLAS header 探测、只用 CPU 后端
-# 禁用 BLAS header 探测、只用 CPU 后端
-os.environ['AESARA_FLAGS'] = "device=cpu,blas__ldflags=,floatX=float32,linker=vm"
+import os, random, time, warnings, json
+from pathlib import Path
+from itertools import groupby
 
 import numpy as np
 import pandas as pd
 from PIL import Image
+from tqdm import tqdm
 
-from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torchvision.transforms as T
 
-import DeepConvSurv_pytorch as deep_conv_surv  # still lives in repo root
+from networks import DeepConvSurv, NegativeLogLikelihood, c_index_torch
 
-# ==================== Hyper‑parameters ====================
-MODEL          = "deepconvsurv"       # keep original logic/choices
-EPOCHS         = 20
-LR             = 5e-4
-SEED           = 1
-BATCH_SIZE     = 30
+warnings.filterwarnings("ignore", category=UserWarning)
 
-# ==================== Repository paths ====================
-BASE_DIR            = os.path.abspath(os.path.dirname(__file__))
-PATCHES_ROOT        = os.path.join(BASE_DIR, "data", "patches")
-PATIENT_LABEL_CSV   = os.path.join(BASE_DIR, "data", "patients.csv")
-EXP_LABEL_CSV       = os.path.join(
-    BASE_DIR, "cluster_result", "patches_1000_cls10_expanded.csv"
-)
-LOG_DIR             = os.path.join(BASE_DIR, "log", "wsisa_patch10")
-os.makedirs(LOG_DIR, exist_ok=True)
+# ============= 路径与常量 =============
+ROOT           = Path(__file__).resolve().parent
+PATCH_CSV      = ROOT / "cluster_result" / "patches_1000_cls10.csv"
+PATIENT_CSV    = ROOT / "data" / "patients.csv"
+MODEL_DIR      = ROOT / "log" / "wsisa_patch10" / "convimgmodel"
+SEL_FILE       = ROOT / "log" / "selected_clusters.txt"
+MODEL_DIR.mkdir(parents=True, exist_ok=True)
+(SEED, random.seed(SEED), torch.manual_seed(SEED))
 
-# ==================== Helpers ====================
+EPOCHS      = 8
+BATCH_SIZE  = 64
+LR          = 1e-4
+C_THRESH    = 0.50           # C-index 阈值, 选簇用
+DEVICE      = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def convert_index(pid_list: np.ndarray, expand_df: pd.DataFrame):
-    """Map a list of patient IDs to *patch‑level* row indices in `expand_df`."""
-    idx_per_patient = [expand_df.index[expand_df["pid"] == pid].tolist()
-                       for pid in pid_list]
-    counts = [len(i) for i in idx_per_patient]
-    flat   = [i for sub in idx_per_patient for i in sub]
-    return flat, counts
-
-# ==========================================================
-
-def model_selection(
-    patches_root: str = PATCHES_ROOT,
-    label_path: str = PATIENT_LABEL_CSV,
-    expand_label_path: str = EXP_LABEL_CSV,
-    train_test_ratio: float = 0.9,
-    train_valid_ratio: float = 0.9,
-    *,
-    seed: int = SEED,
-    model: str = MODEL,
-    batchsize: int = BATCH_SIZE,
-    epochs: int = EPOCHS,
-    lr: float = LR,
-    **kwargs,
-):
-    """Wrap original pipeline with new‑path defaults; logic untouched."""
-    print("\n--------------------- Model Selection ---------------------")
-    print(f"Training Model: {model}")
-    print("epochs:", epochs, " tr/test ratio:", train_test_ratio,
-          " tr/val ratio:", train_valid_ratio)
-    print("learning rate:", lr, " batch size:", batchsize)
-    print("-----------------------------------------------------------\n")
-
-    # ---------- Load label tables ----------
-    labels_df       = pd.read_csv(label_path)
-    expand_label_df = pd.read_csv(expand_label_path)
-
-    # derive cluster id from path (e.g. …cls10_expanded.csv → 10)
-    try:
-        cluster_id = int(os.path.basename(expand_label_path).split("cls")[-1].split(".")[0])
-    except Exception:
-        cluster_id = -1  # fallback; does not affect original logic
-
-    e_status = labels_df["status"].values  # for stratification
-    skf      = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-
-    test_ci_scores = []
-    fold_idx = 1
-    for train_pid_idx, test_pid_idx in skf.split(np.zeros(len(e_status)), e_status):
-        print(f"\n================ Fold {fold_idx} =================")
-
-        # ----- split patient IDs -----
-        train_pids = labels_df["pid"].iloc[train_pid_idx].values
-        test_pids  = labels_df["pid"].iloc[test_pid_idx].values
-
-        # ----- inner split for validation -----
-        sss = StratifiedShuffleSplit(
-            n_splits=1,
-            test_size=1 - train_valid_ratio,
-            random_state=seed,
-        )
-        inner_train_idx, inner_val_idx = next(sss.split(np.zeros(len(train_pid_idx)), e_status[train_pid_idx]))
-        inner_train_pids = train_pids[inner_train_idx]
-        inner_val_pids   = train_pids[inner_val_idx]
-
-        # map to patch‑level indices
-        train_idx, _ = convert_index(inner_train_pids, expand_label_df)
-        valid_idx, _ = convert_index(inner_val_pids,   expand_label_df)
-        test_idx,  _ = convert_index(test_pids,        expand_label_df)
-
-        # save indices (same names/pattern as old version)
-        np.savetxt(os.path.join(LOG_DIR, f"train_cluster{cluster_id}_fold{fold_idx}.csv"),
-                   train_idx, delimiter=",", header="index", comments="")
-        np.savetxt(os.path.join(LOG_DIR, f"valid_cluster{cluster_id}_fold{fold_idx}.csv"),
-                   valid_idx, delimiter=",", header="index", comments="")
-        np.savetxt(os.path.join(LOG_DIR, f"test_cluster{cluster_id}_fold{fold_idx}.csv"),
-                   test_idx,  delimiter=",", header="index", comments="")
-
-        # ----- infer input image shape from *first* patch -----
-        sample_patch_rel = expand_label_df["patch_path"].iloc[0]
-        sample_patch_abs = os.path.join(BASE_DIR, sample_patch_rel)
-        img = Image.open(sample_patch_abs)
-        width, height = img.size
-        channel       = len(img.getbands())
-
-        if model == "deepconvsurv":
-            net = deep_conv_surv.DeepConvSurv(
-                learning_rate=lr,
-                channel=channel,
-                width=width,
-                height=height,
-            )
-            # ORIGINAL ARG ORDER PRESERVED (test/valid swapped intentionally)
-            ci = net.train(
-                data_path=patches_root,
-                label_path=expand_label_path,
-                train_index=train_idx,
-                test_index=valid_idx,
-                valid_index=test_idx,
-                model_index=fold_idx,
-                cluster=cluster_id,
-                batch_size=batchsize,
-                ratio=train_test_ratio,
-                num_epochs=epochs,
-            )
-            test_ci_scores.append(ci)
-        else:
-            print("[Warn] unsupported model; skipping fold.")
-
-        fold_idx += 1
-
-    print("\n================ Overall =================")
-    print(f"C‑index mean: {np.mean(test_ci_scores):.4f}  std: {np.std(test_ci_scores):.4f}")
+MEAN = [0.6964, 0.5905, 0.6692]   # 可按数据集重新计算
+STD  = [0.2559, 0.2943, 0.2462]
+TRANSF = T.Compose([T.ToTensor(), T.Normalize(mean=MEAN, std=STD)])
 
 
-# ==================== CLI entry ====================
-if __name__ == "__main__":
-    model_selection()
-else:
-    print("cluster_select_deepconvsurv_pytorch imported")
+# ============= 数据准备 =============
+patch_df = pd.read_csv(PATCH_CSV)
+patient_df = pd.read_csv(PATIENT_CSV)
+n_patients = patient_df.shape[0]
+assert n_patients == 7, "当前只考虑 7 位病人 (LOPO‑7 折)"
+
+# 每簇 patch 数统计 & 打印
+print("\n>>> Patch 数量统计 (按 cluster)：")
+for c, g in patch_df.groupby("cluster"):
+    print(f"Cluster {c:2d}: {len(g):6d} patches")
+
+# Helper: 取某几位病人的 patch 行 index
+def idx_of(pids):
+    return patch_df.index[patch_df["pid"].isin(pids)].tolist()
+
+
+# ============= LOPO 训练 ============
+clusters = sorted(patch_df["cluster"].unique())
+fold_cidx  = {c: [] for c in clusters}      # 每簇各折 C-index
+
+for fold, test_pid in enumerate(patient_df["pid"], start=1):
+    test_pids   = [test_pid]
+    train_pids  = patient_df["pid"][~patient_df["pid"].isin(test_pids)].tolist()
+    # 再从 train_pids 随机挑 1 位作 valid，其余作 train
+    random.shuffle(train_pids)
+    valid_pids  = [train_pids.pop()]        # 剩 5 病人 train
+    print(f"\n========== Fold {fold} / 7  ==========")
+    print(f"  Train pids: {train_pids}")
+    print(f"  Valid pids: {valid_pids}")
+    print(f"  Test  pids: {test_pids}")
+
+    train_idx = idx_of(train_pids)
+    valid_idx = idx_of(valid_pids)
+    test_idx  = idx_of(test_pids)
+
+    # -------- 训练每个簇 --------
+    for c in clusters:
+        # 当前簇在三集合中的 patch index
+        tr_rows = patch_df.loc[train_idx].query("cluster == @c")
+        va_rows = patch_df.loc[valid_idx].query("cluster == @c")
+        te_rows = patch_df.loc[test_idx].query("cluster == @c")
+
+        if len(tr_rows) < 10:   # 训练样本过少直接跳过
+            print(f"[Skip] cluster {c} has <10 train patches in fold‑{fold}")
+            fold_cidx[c].append(0.0)
+            continue
+
+        # --- Dataset & Loader ---
+        def make_dataset(rows):
+            xs, ts, es = [], [], []
+            for _, r in rows.iterrows():
+                img = TRANSF(Image.open(ROOT / r["patch_path"]))
+                xs.append(img)
+                # 生存标签来自 patients.csv
+                pinfo = patient_df.set_index("pid").loc[r["pid"]]
+                ts.append(float(pinfo["surv"]))
+                es.append(int(pinfo["status"]))
+            xs = torch.stack(xs)
+            ts = torch.tensor(ts, dtype=torch.float32)
+            es = torch.tensor(es, dtype=torch.float32)
+            return xs, ts, es
+
+        Xtr, Ttr, Etr = make_dataset(tr_rows)
+        Xva, Tva, Eva = make_dataset(va_rows)
+        Xte, Tte, Ete = make_dataset(te_rows)
+
+        model = DeepConvSurv(get_features=False).to(DEVICE)
+        crit  = NegativeLogLikelihood()
+        opt   = optim.Adam(model.parameters(), lr=LR)
+
+        best_c = 0.0
+        for ep in range(1, EPOCHS + 1):
+            model.train()
+            perm = torch.randperm(Xtr.size(0))
+            for s in range(0, len(perm), BATCH_SIZE):
+                idx = perm[s:s+BATCH_SIZE]
+                x   = Xtr[idx].to(DEVICE)
+                t   = Ttr[idx].to(DEVICE)
+                e   = Etr[idx].to(DEVICE)
+
+                risk = model(x)
+                loss = crit(risk, t, e)
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+
+            # ---- valid C‑index ----
+            model.eval()
+            with torch.no_grad():
+                v_risk = model(Xva.to(DEVICE))
+                v_c    = c_index_torch(v_risk, Tva, Eva)
+            if v_c > best_c:
+                best_c = v_c
+                torch.save(
+                    {
+                        "model": model.state_dict(),
+                        "optimizer": opt.state_dict(),
+                        "epoch": ep
+                    },
+                    MODEL_DIR / f"convimgmodel_cluster{c}_fold{fold}.pth"
+                )
+        # ---- test C‑index ----
+        model.eval()
+        with torch.no_grad():
+            te_risk = model(Xte.to(DEVICE))
+            te_c    = c_index_torch(te_risk, Tte, Ete)
+        fold_cidx[c].append(te_c)
+        print(f"  [Fold‑{fold}] cluster {c:2d}: best_valid C={best_c:.3f}, test C={te_c:.3f}")
+
+# ============= 选簇 =============
+selected = []
+print("\n>>> 按簇汇总 (7 折均值) C‑index :")
+for c in clusters:
+    scores = fold_cidx[c]
+    mean_c = np.mean(scores)
+    print(f"Cluster {c:2d}: mean C‑index = {mean_c:.4f}")
+    if mean_c >= C_THRESH:
+        selected.append(c)
+
+print("\n>>> 选中簇:", selected)
+with open(SEL_FILE, "w") as f:
+    f.write(",".join(map(str, selected)))
+print(f"[Saved] selected cluster list → {SEL_FILE}")
