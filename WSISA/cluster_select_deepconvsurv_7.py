@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-WSISA/cluster_select_deepconvsurv.py
+WSISA/cluster_select_deepconvsurv_7.py
 
 目的：在只有 7 位病人的数据集上也能完整跑一遍，
       且保证测试集中既有生存（status=1）也有死亡（status=0）的患者：
