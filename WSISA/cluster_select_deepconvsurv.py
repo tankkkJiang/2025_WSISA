@@ -51,15 +51,12 @@ TRANSF = T.Compose([T.ToTensor(), T.Normalize(mean=MEAN, std=STD)])
 
 
 # ============= 数据准备 =============
-patch_df = pd.read_csv(PATCH_CSV)
-patient_df = pd.read_csv(PATIENT_CSV)
-n_patients = patient_df.shape[0]
-assert n_patients == 7, "当前只考虑 7 位病人 (LOPO‑7 折)"
-
-# 每簇 patch 数统计 & 打印
-print("\n>>> Patch 数量统计 (按 cluster)：")
-for c, g in patch_df.groupby("cluster"):
-    print(f"Cluster {c:2d}: {len(g):6d} patches")
+patch_df    = pd.read_csv(PATCH_CSV)
+patient_df  = pd.read_csv(PATIENT_CSV)
+# 只取唯一 pid 列表，自动支持任意数量的 LOPO
+unique_pids = patient_df["pid"].unique().tolist()
+n_patients  = len(unique_pids)
+print(f">>> 找到 {n_patients} 位唯一患者，用于 LOPO 折数")
 
 # Helper: 取某几位病人的 patch 行 index
 def idx_of(pids):
@@ -70,9 +67,13 @@ def idx_of(pids):
 clusters = sorted(patch_df["cluster"].unique())
 fold_cidx  = {c: [] for c in clusters}      # 每簇各折 C-index
 
-for fold, test_pid in enumerate(patient_df["pid"], start=1):
+clusters  = sorted(patch_df["cluster"].unique())
+fold_cidx = {c: [] for c in clusters}      # 每簇各折 C-index
+
+# 用 unique_pids 做 LOPO
+for fold, test_pid in enumerate(unique_pids, start=1):
     test_pids   = [test_pid]
-    train_pids  = patient_df["pid"][~patient_df["pid"].isin(test_pids)].tolist()
+    train_pids = [pid for pid in unique_pids if pid not in test_pids]
     # 再从 train_pids 随机挑 1 位作 valid，其余作 train
     random.shuffle(train_pids)
     valid_pids  = [train_pids.pop()]        # 剩 5 病人 train
