@@ -83,6 +83,55 @@ def make_patch_dataset(rows):
         return None, []
     return torch.stack(xs), pids
 
+
+def agg_weighted_features(patch_df: pd.DataFrame,
+                          sel_clusters,
+                          fea_dim: int) -> pd.DataFrame:
+    """
+    显式实现论文里的加权平均 x_{ij} = w_{ij} * mean_k x_{ijk}
+    返回列: pid, surv, status, fea_0 ... fea_{J*fea_dim-1}
+    """
+    patients = patch_df["pid"].unique().tolist()
+    rows_out = []
+
+    for pid in patients:
+        df_p = patch_df[patch_df["pid"] == pid]
+        total_patches = len(df_p)
+        row = {
+            "pid":    pid,
+            "surv":   df_p["surv"].iloc[0],
+            "status": df_p["status"].iloc[0]
+        }
+        # 记录每个簇的权重 w_ij 用于可视化
+        weight_log = {}
+
+        feat_all = []
+        for c in sel_clusters:
+            df_pc = df_p[df_p["cluster"] == c]
+            n_c   = len(df_pc)
+            if n_c == 0:
+                weight = 0.0
+                feat_c = torch.zeros(fea_dim)
+            else:
+                weight = n_c / total_patches
+                feat_mat = torch.tensor(
+                    df_pc.loc[:, [f"fea_{i}" for i in range(fea_dim)]].values,
+                    dtype=torch.float32
+                )
+                feat_c = feat_mat.mean(dim=0)
+            weight_log[c] = round(weight, 4)
+            feat_all.extend((weight * feat_c).tolist())
+
+        # 打印前 3 个患者的权重分布
+        if len(rows_out) < 3:
+            print(f"    [Debug] patient {pid} 的 w_ij: {weight_log}")
+
+        for i, val in enumerate(feat_all):
+            row[f"fea_{i}"] = val
+        rows_out.append(row)
+
+    return pd.DataFrame(rows_out)
+
 # ---------------- aggregation per fold ----------------
 def aggregate_one_fold(fold, train_pids, valid_pids, test_pids):
     print(f"\n========== 开始第 {fold} 折聚合 ==========")
@@ -151,8 +200,16 @@ def aggregate_one_fold(fold, train_pids, valid_pids, test_pids):
 
         # patch → patient 加权
         try:
-            patient_fea  = patient_features(patch_feat_df, selected_cluster)
-            patient_risk = patient_features(patch_risk_df, selected_cluster, fea_dim=1)
+            # 用新实现替换老 patient_features；若想对比二者可切换
+            fea_dim_here = feat_np.shape[1]        # 由上一循环得到
+            patient_fea  = agg_weighted_features(patch_feat_df,
+                                                 selected_cluster,
+                                                 fea_dim_here)
+            patient_risk = agg_weighted_features(patch_risk_df,
+                                                 selected_cluster,
+                                                 fea_dim=1)
+            print(f"    [Info] 聚合完成: 每位患者特征维度 = "
+                  f"{len(selected_cluster)*fea_dim_here}")
         except Exception as e:
             print(f"[Error] 聚合 patient_features 失败: {e}")
             return
