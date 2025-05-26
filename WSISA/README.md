@@ -63,8 +63,6 @@ WSISA/
 python extract_patches.py
 ```
 
-注意一次只能处理一张WSI，没有实现批量处理。
-
 运行前修改：
 ```python
 # WSI 文件名（放在 data/WSI/ 目录下）
@@ -79,11 +77,6 @@ save_dir = os.path.join("data", "patches", slide_basename)
 ```
 
 时间较长，需要耐心等待。我们一共处理7张WSI文件。
-
-![](media/2025-05-26-00-13-07.png)
-![](media/2025-05-25-22-30-30.png)
-![](media/2025-05-25-22-30-50.png)
-![](media/2025-05-25-22-31-09.png)
 
 ### 2. PCA降维 + 聚类 `pca_cluster_img.py`
 
@@ -153,7 +146,6 @@ data/patches/TCGA-BL-A3JM-01Z-00-DX1.../patch_1445.jpg,TCGA-BL-A3JM-01Z-00-DX1..
 [INFO] 完成聚类: 共写入 26526 条记录
 ```
 
-![](media/2025-05-26-00-25-21.png)
 
 检查聚类结果，存在文件 `cluster_result/patches_1000_cls10.csv`，包含了每个 patch 的聚类结果。
 
@@ -202,9 +194,14 @@ data/patches/TCGA-S5-AA26-01Z-00-DX1.10D28D0C-D537-485E-A371-E3C60ED66FE7/patch_
 这样既保证了病人级互斥（测试时全是“没见过”的患者），又利用了补丁级样本数来训练深度网络。
 
 #### 3.2.2 对原始代码进行改造 `cluster_select_deepconvsurv_7.py`
-我们对原始代码进行了改造，主要是为了适应我们只有 7 个患者的情况。原始代码的五折交叉验证在这种情况下会报错。
+我们对原始代码进行了改造，主要是为了适应我们只有 7 个患者的情况。原始代码的五折交叉验证在这种情况下会报错。我们实现的功能是自动筛选出**对患者级风险预测最有贡献的簇集合**，去掉表现随机或更差的簇。
 
-打印了各簇的 patch 数量分布、总共涉及的患者数（7 位）、以及每位患者的 status（0/1）。
+模型权重 已保存到 log/wsisa_patch10/convimgmodel，聚合脚本可按折（LOPO-7）加载对应簇模型，推理 patch → patient 级特征 & 风险。
+
+首先打印了各簇的 patch 数量分布、总共涉及的患者数（7 位）、以及每位患者的 status（0/1）。
+
+接着自动从 7 位患者中挑出一对既有死亡又有存活的（status 同时包含 0 和 1）作为 测试集，其余 5 位作为 训练/验证集。
+
 
 ```bash
 >>> cluster 分布:
@@ -229,6 +226,9 @@ data/patches/TCGA-S5-AA26-01Z-00-DX1.10D28D0C-D537-485E-A371-E3C60ED66FE7/patch_
   TCGA-MV-A51V: [0.0]
   TCGA-S5-AA26: [0.0]
   TCGA-SY-A9G0: [1.0]
+
+>>> 测试集患者（2）：['TCGA-HQ-A2OE', 'TCGA-BL-A3JM']
+>>> 训练/验证集患者（5）：['TCGA-BL-A13J', 'TCGA-S5-AA26', 'TCGA-SY-A9G0', 'TCGA-HQ-A5ND', 'TCGA-MV-A51V']
 ```
 
 结果输出如下：
@@ -254,10 +254,26 @@ data/patches/TCGA-S5-AA26-01Z-00-DX1.10D28D0C-D537-485E-A371-E3C60ED66FE7/patch_
 
 ### 3.3 生存预测 (Survival Prediction)
 
-### 
-由于设备能力不足，无法运行原始代码的 DeepConvSurv 模型训练。我们使用了一个简化的 CNN 模型来进行生存预测。
 
-![](media/2025-05-26-10-50-50.png)
+#### 3.3.1 生成带权重的患者级特征（Generating Weighted Features）
+对于每个被选中的聚类 j，统计每位患者 i 在该聚类中包含的切片数 $n_{ij}$ 以及该患者的总切片数 $n_i$。
+
+计算聚类 j 对患者 i 的权重：
+
+$w_{ij} = \frac{n_{ij}}{n_i},
+\quad i=1,\dots,N,\; j=1,\dots,J$
+
+### 3.3.2 患者级预测模型训练（Aggregation）
+对于患者 i 在聚类 j 中的每个切片patche k，DeepConvSurv 会输出一个特征向量（可以是最终的风险分数，也可以是倒数第二层 FC 层的输出）$x_{ijk}$。通过对这些特征向量取平均，并乘以权重，就得到聚类层面的患者特征：
+
+$x_{ij}
+= w_{ij} \cdot \frac{1}{K}\sum_{k=1}^{K} x_{ijk}$
+
+其中 $K=n_{ij}$。这样，每位患者就被映射为一个维度为 J（被选聚类数目）的特征向量 $(x_{i1},x_{i2},\dots,x_{iJ})  $
+
+
+每个补丁通过对应簇的 DeepConvSurv 模型，输出一个风险得分（或某一全连接层特征）记为 $x_{ijk}$，其中 $k=1,\dots,K$ 表示患者 i 在簇 j 中的第 k 个补丁。下面的$x_{ij}$表示了患者 i 的 加权特征向量，维度与选定的簇数 J 相同。
+
 
 ## 原始仓库README
 Implementation of WSISA CVPR 2017
