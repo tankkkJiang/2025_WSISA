@@ -279,6 +279,7 @@ $x_{ij}
 #### 3.3.4 输出结果
 打印内容如下：
 ![](media/2025-05-26-17-16-02.png)
+![](media/2025-05-28-17-40-26.png)
 
 下述供下游生存模型（LASSO-Cox、RSF 等）直接读取：
 * **患者级特征**：`{split}_patient_features_fold{fold}.csv`。这些向量就是我们后面用来做生存分析的输入特征。例如，可以把它们丢给 LASSO-Cox、随机森林 Cox、BoostCI、MTLSA 等模型，去学习哪几个聚类（簇）中提取到的形态信息最能预测生存。
@@ -382,8 +383,30 @@ $x_{ij}
 >>> 训练/验证集患者（41 位）：['TCGA-BT-A20J', 'TCGA-HQ-A5ND', 'TCGA-DK-A6B2', 'TCGA-C4-A0F7', 'TCGA-K4-A3WV', 'TCGA-CF-A47V', 'TCGA-BL-A3JM', 'TCGA-DK-A3X1', 'TCGA-GD-A3OP', 'TCGA-K4-A83P', 'TCGA-K4-A54R', 'TCGA-BT-A2LA', 'TCGA-FD-A43N', 'TCGA-BT-A20Q', 'TCGA-BT-A20X', 'TCGA-BL-A13I', 'TCGA-K4-A3WU', 'TCGA-BT-A20R', 'TCGA-GC-A3OO', 'TCGA-K4-A5RH', 'TCGA-2F-A9KQ', 'TCGA-BL-A13J', 'TCGA-HQ-A2OE', 'TCGA-BT-A20O', 'TCGA-GC-A6I3', 'TCGA-GC-A3WC', 'TCGA-GV-A40G', 'TCGA-G2-A2ES', 'TCGA-BT-A2LB', 'TCGA-BT-A20P', 'TCGA-GC-A3RC', 'TCGA-MV-A51V', 'TCGA-DK-A3IN', 'TCGA-BT-A20T', 'TCGA-G2-A2EO', 'TCGA-BL-A5ZZ', 'TCGA-K4-A5RI', 'TCGA-K4-A6FZ', 'TCGA-BT-A20V', 'TCGA-BT-A20W', 'TCGA-CU-A0YR']
 
 ========== Fold 1 / 1 (train=41, test=5) ==========
-Clusters:   0%|                                                                                                        | 0/10 [00:00<?, ?it/s]
-  load patches:   2%|█▉                                                                                    | 156/7128 [00:10<09:33, 12.17it/s]
+Clusters:   0%|                                                                                                        | 0/10 [00:00<?, ?it/s]Cluster  0  →  C-index = 0.1682
+Clusters:  10%|█████████▌                                                                                     | 1/10 [01:58<17:43, 118.20s/it]Cluster  1  →  C-index = 0.4347
+Clusters:  20%|███████████████████▏                                                                            | 2/10 [02:20<08:13, 61.65s/it]Cluster  2  →  C-index = 0.3326
+Clusters:  30%|████████████████████████████▌                                                                  | 3/10 [05:36<14:22, 123.23s/it]Cluster  3  →  C-index = 0.4089
+Clusters:  40%|██████████████████████████████████████▍                                                         | 4/10 [06:07<08:40, 86.78s/it]Cluster  4  →  C-index = 0.2206
+Clusters:  50%|███████████████████████████████████████████████▌                                               | 5/10 [09:04<09:55, 119.19s/it]Cluster  5  →  C-index = 0.1434
+Clusters:  60%|█████████████████████████████████████████████████████████                                      | 6/10 [11:40<08:47, 131.92s/it]Cluster  6  →  C-index = 0.5357
+Clusters:  70%|███████████████████████████████████████████████████████████████████▏                            | 7/10 [11:53<04:39, 93.05s/it]Cluster  7  →  C-index = 0.4793
+Clusters:  80%|████████████████████████████████████████████████████████████████████████████▊                   | 8/10 [12:09<02:17, 68.52s/it]Cluster  8  →  C-index = 0.1574
+Clusters:  90%|██████████████████████████████████████████████████████████████████████████████████████▍         | 9/10 [12:40<00:56, 56.69s/it]Cluster  9  →  C-index = 0.0970
+Clusters: 100%|██████████████████████████████████████████████████████████████████████████████████████████████| 10/10 [17:19<00:00, 103.98s/it]
+
+>>> C_THRESH = 0.5
+>>> 满足阈值的簇： [6]
+
+...
+
+(base) root@gz-ins-678868173725701:~/2025_WSISA/WSISA# python main_WSISA_selectedCluster.py
+2025-05-28 18:41:54,548 INFO DEVICE=cuda, GPU_BATCH=8, MAX_PATCHES=7000
+2025-05-28 18:41:54,633 INFO 共发现 48 张 WSI
+2025-05-28 18:41:54,634 INFO 选簇: [6]
+2025-05-28 18:41:54,634 INFO 
+=== Fold 1: test=TCGA-LT-A8JT-01A-01-TSA, valid=['TCGA-GC-A3WC-11A-01-TS1'], train=46 WSIs ===
+2025-05-28 18:41:54,634 INFO --- [train] 共 46 张 WSI ---
 
 ```
 
@@ -393,7 +416,8 @@ Clusters:   0%|                                                                 
 ![](media/2025-05-28-11-19-12.png)
 ![](media/2025-05-28-11-19-29.png)
 ![](media/2025-05-28-18-39-57.png)
-![](media/2025-05-28-17-40-26.png)
+![](media/2025-05-28-18-47-46.png)
+
 
 ## 原始仓库README
 Implementation of WSISA CVPR 2017
