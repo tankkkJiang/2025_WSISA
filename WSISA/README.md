@@ -11,6 +11,7 @@ WSISA/
 ├── expand_cluster_labels.py
 ├── networks.py
 ├── cluster_select_deepconvsurv_7.py   # 深度模型训练/验证
+├── cluster_select_deepconvsurv.py   # 深度模型训练/验证
 ├── main_WSISA_selectedCluster_7.py  # 第三步：集成已选簇进行特征提取与生存模型训练，针对7个患者的情况
 ├── main_WSISA_selectedCluster.py  # 第三步：集成已选簇进行特征提取与生存模型训练
 ├── data/
@@ -231,7 +232,7 @@ data/patches/TCGA-S5-AA26-01Z-00-DX1.10D28D0C-D537-485E-A371-E3C60ED66FE7/patch_
 >>> 训练/验证集患者（5）：['TCGA-BL-A13J', 'TCGA-S5-AA26', 'TCGA-SY-A9G0', 'TCGA-HQ-A5ND', 'TCGA-MV-A51V']
 ```
 
-结果输出如下：
+结果输出如下,可以看到其实最高的cindex可以达到0.9375，但是由于数据过少可能没有参考价值，后续我们还会引入40张WSI在服务器上进行训练。
 ```bash
 >>> C_THRESH = 0.5
 >>> 满足阈值的簇： [0, 1, 3, 4, 6, 7, 9]
@@ -242,6 +243,7 @@ data/patches/TCGA-S5-AA26-01Z-00-DX1.10D28D0C-D537-485E-A371-E3C60ED66FE7/patch_
 
 
 输出如下：
+
 ![](media/2025-05-26-19-55-51.png)
 
 ### 3.3 生存预测 (Survival Prediction)
@@ -278,15 +280,15 @@ $x_{ij}
 打印内容如下：
 ![](media/2025-05-26-17-16-02.png)
 
-供下游生存模型（LASSO-Cox、RSF 等）直接读取：
-* 患者级特征：`{split}_patient_features_fold{fold}.csv`。这些向量就是我们后面用来做生存分析的输入特征。例如，可以把它们丢给 LASSO-Cox、随机森林 Cox、BoostCI、MTLSA 等模型，去学习哪几个聚类（簇）中提取到的形态信息最能预测生存。
-* 患者级风险：`{split}_patient_risks_fold{fold}.csv`。DeepConvSurv 原本输出的 $\log$‐风险（log-hazard），我们在每个簇的 patch 上也可以直接取平均（或加权平均）来得到患者级的“风险分数”。
+下述供下游生存模型（LASSO-Cox、RSF 等）直接读取：
+* **患者级特征**：`{split}_patient_features_fold{fold}.csv`。这些向量就是我们后面用来做生存分析的输入特征。例如，可以把它们丢给 LASSO-Cox、随机森林 Cox、BoostCI、MTLSA 等模型，去学习哪几个聚类（簇）中提取到的形态信息最能预测生存。
+* **患者级风险**：`{split}_patient_risks_fold{fold}.csv`。DeepConvSurv 原本输出的 $\log$‐风险（log-hazard），我们在每个簇的 patch 上也可以直接取平均（或加权平均）来得到患者级的“风险分数”。
 
-风险分数 让你快速验证各簇模型的有效性（算 C-index）。
+**风险分数**让你快速验证各簇模型的有效性（算 C-index）。
 
-特征向量 则是进一步的、可扩展的表示，用于构建更复杂的多种 Cox/机器学习生存模型，也便于可视化和特征选择。
+**特征向量**则是进一步的、可扩展的表示，用于构建更复杂的多种 Cox/机器学习生存模型，也便于可视化和特征选择。
 
-
+### 4. 实现`40张WSI`的测试
 
 ## 原始仓库README
 Implementation of WSISA CVPR 2017
