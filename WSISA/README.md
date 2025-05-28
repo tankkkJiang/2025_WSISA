@@ -290,6 +290,32 @@ $x_{ij}
 
 ### 4. 实现`40张WSI`的测试
 
+```bash
+(base) root@gz-ins-678868173725701:~/2025_WSISA/WSISA# python pca_cluster_img.py
+遍历目录 data/patches: 100%|████████████████████████████████████████████████████████████████████████████████| 49/49 [00:00<00:00, 1117.76it/s]
+[INFO] 找到 69322 个 '*jpg' 文件
+[INFO] data_dir: data/patches
+[INFO] WSI 子文件夹: 48 个
+[INFO] Total patches: 69322
+[INFO] 聚类开始: WSI 路径 data/patches, 使用补丁数 69322
+[INFO] 开始读取并展平 69322 张图像
+读取图像:  13%|███████████▉                                                                             | 9274/69322 [00:35<03:49, 261.93it/s]
+
+...
+
+[INFO] 开始 KMeans: 样本数 69322, 簇数 10
+[INFO] 保存聚类结果到 cluster_result/patches_1000_cls10.csv
+[INFO] 完成聚类: 共写入 69322 条记录
+(base) root@gz-ins-678868173725701:~/2025_WSISA/WSISA# 
+
+(base) root@gz-ins-678868173725701:~/2025_WSISA/WSISA# python expand_cluster_labels.py
+[INFO] Saved expanded label to /root/2025_WSISA/WSISA/cluster_result/patches_1000_cls10_expanded.csv
+```
+
+![](media/2025-05-28-10-36-23.png)
+![](media/2025-05-28-10-56-57.png)
+![](media/2025-05-28-10-57-44.png)
+
 ## 原始仓库README
 Implementation of WSISA CVPR 2017
 Implemented 4 step:

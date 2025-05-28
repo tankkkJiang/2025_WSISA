@@ -3,10 +3,11 @@
 """
 WSISA/cluster_select_deepconvsurv.py
 
-目的：在只有 7 位病人的数据集上也能完整跑一遍，
+目的：在多位病人的数据集上完整运行，
       且保证测试集中既有生存（status=1）也有死亡（status=0）的患者：
-      * 每个簇各自训练 1 个 DeepConvSurv（训练/验证集共 5 患者）
-      * 测试集 2 患者
+      * 每个簇训练 1 个 DeepConvSurv
+      * 测试集 5 患者
+      * 训练/验证集 为剩余患者
       * 针对 C-index=0 或 C-index=0.5 的簇打印原因
       * 只保留 C-index >= 0.5 的簇
 """
@@ -41,11 +42,11 @@ MODEL_DIR.mkdir(parents=True, exist_ok=True)
 EPOCHS, BATCH_SIZE, LR = 3, 16, 1e-4
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# 新阈值：只保留 C-index >= 0.5 的簇（至少达到随机水平）
+# 只保留 C-index >= 0.5 的簇
 C_THRESH = 0.5
 
-MEAN=[0.6964,0.5905,0.6692]
-STD =[0.2559,0.2943,0.2462]
+MEAN = [0.6964, 0.5905, 0.6692]
+STD  = [0.2559, 0.2943, 0.2462]
 TRANSF = T.Compose([T.ToTensor(), T.Normalize(mean=MEAN, std=STD)])
 
 # ---------------- 读取并打印基本信息 ----------------
@@ -64,18 +65,21 @@ print(">>> 各患者生存状态:")
 for pid, sts in pid_status.items():
     print(f"  {pid}: {sts}")
 
-# 自动挑选测试集 2 患者，保证包含 {0,1}
+# 自动挑选测试集 5 患者，保证包含生存和死亡
 test_pids = None
-for combo in combinations(unique_pids, 2):
-    if set(df[df.pid.isin(combo)]["status"].unique()) == {0,1}:
+for combo in combinations(unique_pids, 5):
+    statuses = set()
+    for pid in combo:
+        statuses.update(pid_status[pid])
+    if statuses == {0, 1}:
         test_pids = list(combo)
         break
 if test_pids is None:
-    raise RuntimeError("找不到包含两种生存状态的 2 患者组合")
+    raise RuntimeError("找不到包含两种生存状态的 5 患者组合")
 
 train_val_pids = [pid for pid in unique_pids if pid not in test_pids]
-print(f"\n>>> 测试集患者（2）：{test_pids}")
-print(f">>> 训练/验证集患者（{len(train_val_pids)}）：{train_val_pids}\n")
+print(f"\n>>> 测试集患者（5 位）：{test_pids}")
+print(f">>> 训练/验证集患者（{len(train_val_pids)} 位）：{train_val_pids}\n")
 
 # ---------------- 构造数据集 ----------------
 def make_dataset(rows):
@@ -97,7 +101,7 @@ def make_dataset(rows):
 clusters = sorted(df["cluster"].unique())
 fold_cidx = {}
 
-print("========== Fold 1 / 1 (train=5, test=2) ==========")
+print(f"========== Fold 1 / 1 (train={len(train_val_pids)}, test=5) ==========")
 for c in tqdm(clusters, desc="Clusters"):
     df_c  = df.query("cluster == @c")
     df_tv = df_c[df_c.pid.isin(train_val_pids)]
@@ -135,7 +139,6 @@ for c in tqdm(clusters, desc="Clusters"):
         print(f"[Warn] cluster {c}: 测试数据为空，C-index 置 0")
         c_idx = 0.0
     else:
-        # 分批推理防 OOM
         model.eval()
         scores_list = []
         with torch.no_grad():
@@ -150,14 +153,14 @@ for c in tqdm(clusters, desc="Clusters"):
 
     fold_cidx[c] = c_idx
     print(f"Cluster {c:2d}  →  C-index = {c_idx:.4f}")
-
-    # 针对特殊值打印原因
     if c_idx == 0.0:
         print(f"  [Info] cluster {c}: C-index=0.0 可能因为测试集中无可比较生存对或所有status一致")
 
     # 保存模型
-    torch.save({"model": model.state_dict()},
-               MODEL_DIR / f"convimgmodel_cluster{c}_fold1.pth")
+    torch.save(
+        {"model": model.state_dict()},
+        MODEL_DIR / f"convimgmodel_cluster{c}_fold1.pth"
+    )
 
 # ---------------- 选簇并保存列表 ----------------
 selected = [c for c, v in fold_cidx.items() if v >= C_THRESH]
