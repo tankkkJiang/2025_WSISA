@@ -310,11 +310,88 @@ $x_{ij}
 
 (base) root@gz-ins-678868173725701:~/2025_WSISA/WSISA# python expand_cluster_labels.py
 [INFO] Saved expanded label to /root/2025_WSISA/WSISA/cluster_result/patches_1000_cls10_expanded.csv
+
+...
+
+
+(base) root@gz-ins-678868173725701:~/2025_WSISA/WSISA# python cluster_select_deepconvsurv.py
+
+>>> cluster 分布:
+  cluster  0:   7729 patches
+  cluster  1:   1738 patches
+  cluster  2:  15429 patches
+  cluster  3:   2374 patches
+  cluster  4:  12268 patches
+  cluster  5:  16350 patches
+  cluster  6:    839 patches
+  cluster  7:   1127 patches
+  cluster  8:   2353 patches
+  cluster  9:  25295 patches
+
+>>> 数据集共有 46 位病人
+
+>>> 各患者生存状态:
+  TCGA-2F-A9KQ: [0.0]
+  TCGA-BL-A13I: [1.0]
+  TCGA-BL-A13J: [1.0]
+  TCGA-BL-A3JM: [1.0]
+  TCGA-BL-A5ZZ: [0.0]
+  TCGA-BT-A20J: [1.0]
+  TCGA-BT-A20O: [1.0]
+  TCGA-BT-A20P: [1.0]
+  TCGA-BT-A20Q: [1.0]
+  TCGA-BT-A20R: [1.0]
+  TCGA-BT-A20T: [1.0]
+  TCGA-BT-A20V: [1.0]
+  TCGA-BT-A20W: [1.0]
+  TCGA-BT-A20X: [1.0]
+  TCGA-BT-A2LA: [0.0]
+  TCGA-BT-A2LB: [1.0]
+  TCGA-C4-A0F7: [1.0]
+  TCGA-CF-A47V: [0.0]
+  TCGA-CU-A0YR: [1.0]
+  TCGA-DK-A3IN: [1.0]
+  TCGA-DK-A3X1: [0.0]
+  TCGA-DK-A6B2: [0.0]
+  TCGA-FD-A43N: [0.0]
+  TCGA-G2-A2EO: [1.0]
+  TCGA-G2-A2ES: [1.0]
+  TCGA-GC-A3BM: [1.0]
+  TCGA-GC-A3OO: [0.0]
+  TCGA-GC-A3RC: [0.0]
+  TCGA-GC-A3WC: [0.0]
+  TCGA-GC-A6I3: [0.0]
+  TCGA-GD-A3OP: [0.0]
+  TCGA-GV-A40G: [0.0]
+  TCGA-HQ-A2OE: [0.0]
+  TCGA-HQ-A5ND: [1.0]
+  TCGA-K4-A3WU: [0.0]
+  TCGA-K4-A3WV: [0.0]
+  TCGA-K4-A54R: [0.0]
+  TCGA-K4-A5RH: [0.0]
+  TCGA-K4-A5RI: [1.0]
+  TCGA-K4-A6FZ: [0.0]
+  TCGA-K4-A83P: [0.0]
+  TCGA-LT-A8JT: [0.0]
+  TCGA-MV-A51V: [0.0]
+  TCGA-S5-AA26: [0.0]
+  TCGA-SY-A9G0: [1.0]
+  TCGA-UY-A8OB: [0.0]
+
+>>> 测试集患者（5 位）：['TCGA-LT-A8JT', 'TCGA-SY-A9G0', 'TCGA-S5-AA26', 'TCGA-UY-A8OB', 'TCGA-GC-A3BM']
+>>> 训练/验证集患者（41 位）：['TCGA-BT-A20J', 'TCGA-HQ-A5ND', 'TCGA-DK-A6B2', 'TCGA-C4-A0F7', 'TCGA-K4-A3WV', 'TCGA-CF-A47V', 'TCGA-BL-A3JM', 'TCGA-DK-A3X1', 'TCGA-GD-A3OP', 'TCGA-K4-A83P', 'TCGA-K4-A54R', 'TCGA-BT-A2LA', 'TCGA-FD-A43N', 'TCGA-BT-A20Q', 'TCGA-BT-A20X', 'TCGA-BL-A13I', 'TCGA-K4-A3WU', 'TCGA-BT-A20R', 'TCGA-GC-A3OO', 'TCGA-K4-A5RH', 'TCGA-2F-A9KQ', 'TCGA-BL-A13J', 'TCGA-HQ-A2OE', 'TCGA-BT-A20O', 'TCGA-GC-A6I3', 'TCGA-GC-A3WC', 'TCGA-GV-A40G', 'TCGA-G2-A2ES', 'TCGA-BT-A2LB', 'TCGA-BT-A20P', 'TCGA-GC-A3RC', 'TCGA-MV-A51V', 'TCGA-DK-A3IN', 'TCGA-BT-A20T', 'TCGA-G2-A2EO', 'TCGA-BL-A5ZZ', 'TCGA-K4-A5RI', 'TCGA-K4-A6FZ', 'TCGA-BT-A20V', 'TCGA-BT-A20W', 'TCGA-CU-A0YR']
+
+========== Fold 1 / 1 (train=41, test=5) ==========
+Clusters:   0%|                                                                                                        | 0/10 [00:00<?, ?it/s]
+  load patches:   2%|█▉                                                                                    | 156/7128 [00:10<09:33, 12.17it/s]
+
 ```
 
 ![](media/2025-05-28-10-36-23.png)
 ![](media/2025-05-28-10-56-57.png)
 ![](media/2025-05-28-10-57-44.png)
+![](media/2025-05-28-11-19-12.png)
+![](media/2025-05-28-11-19-29.png)
 
 ## 原始仓库README
 Implementation of WSISA CVPR 2017
